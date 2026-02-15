@@ -2583,7 +2583,7 @@ static int choose_alt_offset_modulo_brute(const U32 * offsets,int offset_count,
 
 choose_alt_offset_modulo_fast :
 
-find 4 most probably offsets <= NEWLZ_ALT_OFFSET_MAX_MOD
+find 4 most probable offsets <= NEWLZ_ALT_OFFSET_MAX_MOD
 
 just cost them (and also always mod=1)
 

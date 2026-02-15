@@ -18,6 +18,7 @@ OODLE_NS_START
 
 #define OODLELZ_MAX_DIC_BACKUP	(1<<29)
 #define OODLELZ_MAX_OFFSET		(1<<30)	// 1 GB ; must fit in S32
+#define OODLELZ_MIN_DIC_SIZE	(8) // must be >=NEWLZ_MIN_OFFSET
 		
 #define OODLELZ_DEFAULT_SSTB	256
 

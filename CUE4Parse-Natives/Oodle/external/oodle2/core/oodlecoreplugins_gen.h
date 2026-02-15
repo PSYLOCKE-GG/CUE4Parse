@@ -31,14 +31,14 @@ IDOC OODEFFUNC typedef void * (OODLE_CALLBACK t_fp_OodleCore_Plugin_MallocAligne
 IDOC OODEFFUNC typedef void (OODLE_CALLBACK t_fp_OodleCore_Plugin_Free)( void * ptr );
 /* Function pointer type for OodleFree
 
-	$:return	pointer to memory to free
+	$:ptr	pointer to memory to free
 
 */
 
 IDOC OOFUNC1 void OOFUNC2 OodleCore_Plugins_SetAllocators(
 	t_fp_OodleCore_Plugin_MallocAligned * fp_OodleMallocAligned,
 	t_fp_OodleCore_Plugin_Free * fp_OodleFree);
-/* Set the function pointers for allocation needed by Oodle2 Core
+/* Set the function pointers for allocations by Oodle.
 
 	If these are not set, the default implementation on most platforms uses the C stdlib.
 	On Microsoft platforms the default implementation uses HeapAlloc.
@@ -83,7 +83,7 @@ IDOC OODEFFUNC typedef void (OODLE_CALLBACK t_fp_OodleCore_Plugin_WaitJob)( OO_U
 /* Function pointer type for OodleCore_Plugins_SetJobSystem
 
 	$:job_handle	a job handle returned from RunJob. Never 0.
-    $:user_ptr      is passed through from the OodleLZ_CompressOptions.
+    $:user_ptr      is passed through from the OodleLZ_CompressOptions or OodleTex_Encode call.
 
 	Waits until the job specified by job_handle is done and cleans up any associated resources. Oodle
 	will call WaitJob exactly once for every RunJob call that didn't return 0.
@@ -112,7 +112,7 @@ IDOC OOFUNC1 void OOFUNC2 OodleCore_Plugins_SetJobSystemAndCount(
 	t_fp_OodleCore_Plugin_RunJob * fp_RunJob,
 	t_fp_OodleCore_Plugin_WaitJob * fp_WaitJob,
 	int target_parallelism);
-/* Set the function pointers for async job system needed by Oodle2 Core
+/* Set the function pointers for async job system used by Oodle.
 
 	$:fp_RunJob		pointer to RunJob function
 	$:fp_WaitJob	pointer to WaitJob function

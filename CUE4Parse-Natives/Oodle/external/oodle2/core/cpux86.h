@@ -25,6 +25,7 @@
 #define RRX86_CPU_AVX512        (1U<<11)    // Skylake feature set: AVXF512{F,VL,BW,DQ}
 #define RRX86_CPU_PREFER512		(1U<<12)	// Set when 512-bit vector usage is preferred with no major caveats
 #define RRX86_CPU_SAFE_MODE		(1U<<13)	// not an actual feature bit; set when OODLE_SAFE_MODE was on
+#define RRX86_CPU_RAPTOR_LAKE	(1U<<14)	// Intel 13th/14th gen "Raptor Lake" parts (for workarounds)
 
 // Default safe feature sets for Oodle Data and Oodle Texture
 // Texture has SSE4.1 min spec and no fallback paths below it

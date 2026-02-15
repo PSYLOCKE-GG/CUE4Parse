@@ -22,7 +22,11 @@
 
 %ifdef BMI2
 
-    %define FUNCNAME oodle_newLZ_tans_x64_bmi2_kern
+    %ifdef RAPTOR_LAKE_WORKAROUND
+        %define FUNCNAME oodle_newLZ_tans_x64_bmi2_rpl_kern
+    %else
+        %define FUNCNAME oodle_newLZ_tans_x64_bmi2_kern
+    %endif
     
     %macro CLZ64 2 ; args: out, in
             lzcnt           %1, %2
@@ -154,9 +158,16 @@ leaf_func_with_prologue FUNCNAME
 %macro DECONE 4 ; args: stateout32 statein64 bits64 bits32
         mov             ecx, [rsi + %2*8 + 4]                   ; cl=len ch=sym hi16=nextst
         bzhi            %1, %4, ecx                             ; mask low bits of bitbuf
+%ifdef RAPTOR_LAKE_WORKAROUND ; Intel 13th/14th gen "Raptor Lake" have glitchy store from 8-bit high regs
+        shrx            %3, %3, rcx                             ; consume bits
+        shr             ecx, 8                                  ; extract sym
+        mov             [rdi + out_offs], cl
+        shr             ecx, 8                                  ; extract nextst
+%else
         mov             [rdi + out_offs], ch
         shrx            %3, %3, rcx                             ; consume bits
         shr             ecx, 16                                 ; extract nextst
+%endif
         add             %1, ecx
         %assign out_offs out_offs + 1
 %endmacro

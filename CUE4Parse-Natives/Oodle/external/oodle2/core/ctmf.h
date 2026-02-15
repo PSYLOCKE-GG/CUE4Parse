@@ -504,82 +504,92 @@ struct CTMF
 	void insert(U32 * row,U32 pos,U32 check)
 	{
 		RR_COMPILER_ASSERT( c_table_depth >= 1 );
-		// c_table_depth == 1 at the lowest compressor levels
-		if ( c_table_depth > 1 )
-		{
-			if (c_table_depth == 16) // 64 bytes = 4 128-bit vectors = 2 256-bit vectors
-			{
-				#if defined(__AVX2__) // this is set on files that compile with -mavx2 or /arch:AVX2 (i.e. _require_ AVX2)
-				__m256i a0 = _mm256_load_si256 ((const __m256i *) (row + 0));
-				__m256i a1 = _mm256_loadu_si256((const __m256i *) (row + 7));
-				_mm256_storeu_si256((__m256i *) (row + 1), a0);
-				_mm256_store_si256 ((__m256i *) (row + 8), a1);
-				#elif defined(__RADSSE2__)
-				__m128i a0 = _mm_load_si128 ((const __m128i *) (row +  0));
-				__m128i a1 = _mm_loadu_si128((const __m128i *) (row +  3));
-				__m128i a2 = _mm_loadu_si128((const __m128i *) (row +  7));
-				__m128i a3 = _mm_loadu_si128((const __m128i *) (row + 11));
-				_mm_storeu_si128((__m128i *) (row +  1), a0);
-				_mm_store_si128 ((__m128i *) (row +  4), a1);
-				_mm_store_si128 ((__m128i *) (row +  8), a2);
-				_mm_store_si128 ((__m128i *) (row + 12), a3);
-				#else
-				memmove(row+1,row,(c_table_depth-1)*sizeof(U32));
-				#endif
-			}
-			else if (c_table_depth == 8) // 32 bytes = 2 128-bit vectors
-			{
-				#ifdef __RADSSE2__
-				__m128i a0 = _mm_load_si128 ((const __m128i *) (row +  0));
-				__m128i a1 = _mm_loadu_si128((const __m128i *) (row +  3));
-				// could alternative slide the lanes of a0 and insert the bottom word
-				//	then store at row+0
-				// but that's not any faster
-				_mm_storeu_si128((__m128i *) (row +  1), a0);
-				_mm_store_si128 ((__m128i *) (row +  4), a1);
-				#else
-				// could probably be better
-				memmove(row+1,row,(c_table_depth-1)*sizeof(U32));
-				#endif
-			}
-			else if (c_table_depth == 4) // 16 bytes
-			{
-				// this is Kraken Normal at the moment (depth_shift=2, depth=4)
-				// move 12 bytes up by 4
 
-				#ifdef __RAD64REGS__
-				// 158.13 c/b
-				// faster to do all 64's rather than mixed 32-64
-				U64 a = RR_GET64_NATIVE(row+0);
-				U64 b = RR_GET64_NATIVE(row+1);
-				RR_PUT64_NATIVE(row+1,a);
-				RR_PUT64_NATIVE(row+2,b);
-				#else
-				// 161.09 c/b
-				U32 a,b,c;
-				a = row[0]; b = row[1]; c = row[2];
-				row[1] = a; row[2] = b; row[3] = c;
-				#endif
-			}
-			else if (c_table_depth == 2)
-			{
-				row[1] = row[0];
-			}
-			else
-			{
-				// depth is always a low power of 2
-				RR_COMPILER_ASSERT( c_table_depth == 1 || c_table_depth == 2 || c_table_depth == 4 \
-					|| c_table_depth == 8 || c_table_depth == 16 );
-			}	
+		U32 new_entry = (pos & CTMF_POS_MASK) | (check & CTMF_CHECK_MASK);
+
+		// c_table_depth == 1 at the lowest compressor levels
+		if (c_table_depth == 16) // 64 bytes = 4 128-bit vectors = 2 256-bit vectors
+		{
+			#if defined(__AVX2__) // this is set on files that compile with -mavx2 or /arch:AVX2 (i.e. _require_ AVX2)
+			__m256i a0 = _mm256_load_si256 ((const __m256i *) (row + 0));
+			__m256i a1 = _mm256_loadu_si256((const __m256i *) (row + 7));
+			_mm256_storeu_si256((__m256i *) (row + 1), a0);
+			_mm256_store_si256 ((__m256i *) (row + 8), a1);
+			#elif defined(__RADSSE2__)
+			__m128i a0 = _mm_load_si128 ((const __m128i *) (row +  0));
+			__m128i a1 = _mm_loadu_si128((const __m128i *) (row +  3));
+			__m128i a2 = _mm_loadu_si128((const __m128i *) (row +  7));
+			__m128i a3 = _mm_loadu_si128((const __m128i *) (row + 11));
+			_mm_storeu_si128((__m128i *) (row +  1), a0);
+			_mm_store_si128 ((__m128i *) (row +  4), a1);
+			_mm_store_si128 ((__m128i *) (row +  8), a2);
+			_mm_store_si128 ((__m128i *) (row + 12), a3);
+			#else
+			memmove(row+1,row,(c_table_depth-1)*sizeof(U32));
+			#endif
+
+			row[0] = new_entry;
 		}
-		
-		U32 row0 = (pos & CTMF_POS_MASK) | (check & CTMF_CHECK_MASK);
-		row[0] = row0;
+		else if (c_table_depth == 8) // 32 bytes = 2 128-bit vectors
+		{
+			#ifdef __RADSSE2__
+			__m128i a0 = _mm_load_si128 ((const __m128i *) (row +  0));
+			__m128i a1 = _mm_loadu_si128((const __m128i *) (row +  3));
+			// could alternatively slide the lanes of a0 and insert the bottom word
+			// (see depth==4) case; in my testing, comes out basically identical
+			_mm_storeu_si128((__m128i *) (row +  1), a0);
+			_mm_store_si128 ((__m128i *) (row +  4), a1);
+			row[0] = new_entry;
+			#else
+			// could probably be better
+			memmove(row+1,row,(c_table_depth-1)*sizeof(U32));
+			row[0] = new_entry;
+			#endif
+		}
+		else if (c_table_depth == 4) // 16 bytes
+		{
+			// this is Kraken Normal at the moment (depth_shift=2, depth=4)
+			// move 12 bytes up by 4
+
+			#if defined(__RADSSE2__)
+			__m128i a = _mm_load_si128((const __m128i *)row);
+			// Shift up by 4 bytes, insert new entry at the bottom
+			a = _mm_or_si128(_mm_slli_si128(a, 4), _mm_cvtsi32_si128(new_entry));
+			_mm_store_si128((__m128i *)row, a);
+			#elif defined(__RAD64REGS__)
+			// faster to do all 64's rather than mixed 32-64
+			U64 a = RR_GET64_NATIVE(row+0);
+			U64 b = RR_GET64_NATIVE(row+1);
+			RR_PUT64_NATIVE(row+1,a);
+			RR_PUT64_NATIVE(row+2,b);
+			row[0] = new_entry;
+			#else
+			U32 a,b,c;
+			a = row[0]; b = row[1]; c = row[2];
+			row[1] = a; row[2] = b; row[3] = c;
+			row[0] = new_entry;
+			#endif
+		}
+		else if (c_table_depth == 2)
+		{
+			row[1] = row[0];
+			row[0] = new_entry;
+		}
+		else if (c_table_depth == 1)
+		{
+			// nothing to shift!
+			row[0] = new_entry;
+		}
+		else
+		{
+			// depth is always a low power of 2
+			RR_COMPILER_ASSERT( c_table_depth == 1 || c_table_depth == 2 || c_table_depth == 4 \
+				|| c_table_depth == 8 || c_table_depth == 16 );
+		}	
 	}
 	
 	void insert(U16 * row,U32 pos,U32 check)
 	{
-	
 		RR_COMPILER_ASSERT( c_table_depth >= 1 );
 		if (c_table_depth > 1)
 		{
@@ -671,12 +681,13 @@ struct CTMF
 		if ( sizeof(t_hashtype) == 4 )
 		{
 		#if defined(__RADSSE2__)
-			if ( c_table_depth == 4 && c_do_second_hash )
+			if ( c_table_depth == 8 || ( c_table_depth == 4 && c_do_second_hash ) )
 			{
+				// 8 candidate locations to check, either from one row or two
 				__m128i vcurpos = _mm_set1_epi32(cur_absolute_pos);
 				__m128i vposmask = _mm_set1_epi32(CTMF_POS_MASK);
 				__m128i vrow0 = _mm_loadu_si128((const __m128i *)&row[0]);
-				__m128i vrow1 = _mm_loadu_si128((const __m128i *)&row2[0]);
+				__m128i vrow1 = _mm_loadu_si128((const __m128i *)(c_do_second_hash ? &row2[0] : &row[4]));
 				_mm_storeu_si128((__m128i *)&candidates[0], _mm_and_si128(_mm_sub_epi32(vcurpos, vrow0), vposmask));
 				_mm_storeu_si128((__m128i *)&candidates[4], _mm_and_si128(_mm_sub_epi32(vcurpos, vrow1), vposmask));
 
@@ -690,7 +701,7 @@ struct CTMF
 				U32 candidate_mask = _mm_movemask_epi8(vhitfinal);
 
 				// if both rows were same, score matches only once
-				if ( row == row2 )
+				if ( c_do_second_hash && row == row2 )
 					candidate_mask &= 0xf;
 
 				return candidate_mask;
@@ -710,14 +721,16 @@ struct CTMF
 				return candidate_mask;
 			}
 		#elif defined(DO_BUILD_NEON64)
-			if ( c_table_depth == 4 && c_do_second_hash )
+			if ( c_table_depth == 8 || ( c_table_depth == 4 && c_do_second_hash ) )
 			{
+				// 8 candidate locations to check, either from one row or two
 				static RAD_ALIGN(const U16, maskbits[8], 16) = { 1,2,4,8, 16,32,64,128 };
 
 				uint32x4_t vcurpos = vdupq_n_u32(cur_absolute_pos);
 				uint32x4_t vposmask = vdupq_n_u32(CTMF_POS_MASK);
 				uint32x4_t vrow0 = vld1q_u32(row);
-				uint32x4_t vrow1 = vld1q_u32(row2);
+				// NOTE: extra set of parens required for VC++ impl of NEON intrinsics
+				uint32x4_t vrow1 = vld1q_u32((c_do_second_hash ? row2 : &row[4]));
 				vst1q_u32(&candidates[0], vandq_u32(vsubq_u32(vcurpos, vrow0), vposmask));
 				vst1q_u32(&candidates[4], vandq_u32(vsubq_u32(vcurpos, vrow1), vposmask));
 
@@ -729,7 +742,7 @@ struct CTMF
 				U32 candidate_mask = vaddvq_u16(vandq_u16(vhit01, vld1q_u16(maskbits)));
 
 				// if both rows were same, score matches only once
-				if ( row == row2 )
+				if ( c_do_second_hash && row == row2 )
 					candidate_mask &= 0xf;
 
 				return candidate_mask;

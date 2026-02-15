@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define OOCOPYRIGHT "Copyright (C) 1994-2024, Epic Games Tools LLC"
+#define OOCOPYRIGHT "Copyright (C) 1994-2026, Epic Games Tools LLC"
 
 // Typedefs
 typedef int8_t OO_S8;

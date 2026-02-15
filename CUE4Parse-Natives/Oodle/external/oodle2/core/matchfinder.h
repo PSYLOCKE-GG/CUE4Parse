@@ -51,10 +51,12 @@ struct UnpackedMatchPair_EqualLength
 class IncrementalMatchFinder
 {
 public:
-	virtual ~IncrementalMatchFinder() { };
-
 	virtual void Release() = 0;
 	virtual int ProcessChunk(int chunkSize, UnpackedMatchPair * matches, int maxPairs) = 0;
+
+protected:
+	// Don't let callers delete IncrementalMatchFinders directly, so make it protected
+	~IncrementalMatchFinder() = default;
 };
 
 OODLE_NS_END

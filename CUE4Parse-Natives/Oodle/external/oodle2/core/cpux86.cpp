@@ -20,9 +20,13 @@
 	#include <includewindows.h> // for GetEnvironmentVariableA
 	#endif
 
-	#if _MSC_VER >= 1500 // VC++2008 or later
 	#define HAVE_CPUIDEX
-	#endif
+	#include <immintrin.h> // _xgetbv
+
+	static inline U64 xgetbv(U32 xcr)
+	{
+		return _xgetbv(xcr);
+	}
 #elif 0 // defined(__RADANDROID__)
 #include <cpuid.h>
 
@@ -66,6 +70,13 @@
 
 	#define HAVE_CPUIDEX
 	#define __cpuid(out, leaf_id) __cpuidex(out, leaf_id, 0)
+
+	static inline U64 xgetbv(U32 xcr)
+	{
+		U32 lo, hi;
+		__asm__ __volatile__("xgetbv" : "=a"(lo), "=d"(hi) : "c"(xcr));
+		return ((U64)hi << 32) | lo;
+	}
 #endif // _MSC_VER or not
 
 
@@ -121,6 +132,7 @@ void rrCPUx86_detect(U32 safe_mode_features)
 	int cpuid_info[4];
 	U32 features = 0;
 	U32 max_leaf;
+	bool is_intel = false;
 	bool is_amd = false;
 
 	// if we already detected, we're good!
@@ -132,6 +144,13 @@ void rrCPUx86_detect(U32 safe_mode_features)
 	__cpuid(cpuid_info, 0);
 	max_leaf = cpuid_info[0];
 
+	// Is it Intel?
+	if (cpuid_info[1] == 0x756e6547 /* "Genu" */ && cpuid_info[3] == 0x49656e69 /* "ineI" */ &&
+		cpuid_info[2] == 0x6c65746e /* "ntel" */)
+	{
+		is_intel = true;
+	}
+
 	// Is it AMD?
 	if (cpuid_info[1] == 0x68747541 /* "Auth" */ && cpuid_info[3] == 0x69746e65 /* "enti" */ &&
 		cpuid_info[2] == 0x444d4163 /* "cAMD" */)
@@ -142,15 +161,22 @@ void rrCPUx86_detect(U32 safe_mode_features)
 	// Basic feature flags
 	__cpuid(cpuid_info, 1);
 
+	// Raptor Lake CPUs get ASM kernels with workarounds
+	if (is_intel && cpuid_info[0] == 0xb0671)
+	{
+		features |= RRX86_CPU_RAPTOR_LAKE;
+	}
+
 	if (cpuid_info[3] & (1u<<26))	features |= RRX86_CPU_SSE2;
 	if (cpuid_info[2] & (1u<< 9))	features |= RRX86_CPU_SSSE3;
 	if (cpuid_info[2] & (1u<<19))	features |= RRX86_CPU_SSE41;
 	if (cpuid_info[2] & (1u<<20))	features |= RRX86_CPU_SSE42;
-	if (cpuid_info[2] & (1u<<28))	features |= RRX86_CPU_AVX;
-	if (cpuid_info[2] & (1u<<29))	features |= RRX86_CPU_F16C;
 
-	// We don't have a feature flag we report for this, but we do use it later
+	// We don't have feature flags we report for this, but we do use them later
 	bool has_popcnt = (cpuid_info[2] & (1u<<23)) != 0;
+	bool has_osxsave = (cpuid_info[2] & (1u<<27)) != 0;
+	bool has_cpu_avx = (cpuid_info[2] & (1u<<28)) != 0;
+	bool has_cpu_f16c = (cpuid_info[2] & (1u<<29)) != 0;
 
 	if (is_amd)
 	{
@@ -162,6 +188,24 @@ void rrCPUx86_detect(U32 safe_mode_features)
 		// so just testing for this:
 		if (family == 0xf && ext_family >= 0x08)
 			features |= RRX86_CPU_AMD_ZEN;
+	}
+
+	// Get XCR0, if available, and determine context save bits
+	U64 xcr0 = 0;
+	if (has_osxsave)
+	{
+		xcr0 = xgetbv(0);
+	}
+
+	// YMM register saving and ZMM/opmask register saving support
+	bool has_os_avx_support = (xcr0 & 6) == 6;
+	bool has_os_avx512_support = (xcr0 & 0xe6) == 0xe6;
+
+	// AVX support requires both CPU and OS support, and gates some other extensions
+	if (has_os_avx_support)
+	{
+		if (has_cpu_avx)	features |= RRX86_CPU_AVX;
+		if (has_cpu_f16c)	features |= RRX86_CPU_F16C;
 	}
 
 #ifdef HAVE_CPUIDEX
@@ -178,7 +222,7 @@ void rrCPUx86_detect(U32 safe_mode_features)
 		// Also only report AVX or the BMIs if POPCNT is present; all processors I know of
 		// have either both or neither, and it's convenient for us to be able to assume
 		// that either BMI1/BMI2 or AVX2 implies POPCNT.
-		if ((features & RRX86_CPU_AVX) && has_popcnt)
+		if (has_cpu_avx && has_os_avx_support && has_popcnt)
 		{
 			if (cpuid_info[1] & (1u<<3))	features |= RRX86_CPU_BMI1;
 			if (cpuid_info[1] & (1u<<8))	features |= RRX86_CPU_BMI2;
@@ -194,17 +238,22 @@ void rrCPUx86_detect(U32 safe_mode_features)
 			if ((cpuid_info[1] & avx2_bits) == avx2_bits)
 				features |= RRX86_CPU_AVX2;
 
-			// For us to report AVX512, we want the Skylake feature set
-			const U32 avx512_bits = (1u << 31) /* AVX512VL */ | (1u << 30) /* AVX512BW */ | (1u << 17) /* AVX512DQ */ | (1u << 16) /* AVX512F */;
-			if ((cpuid_info[1] & avx512_bits) == avx512_bits)
-				features |= RRX86_CPU_AVX512;
+			if (has_os_avx512_support)
+			{
+				// For us to report AVX512, we want the Skylake feature set
+				const U32 avx512_bits = (1u << 31) /* AVX512VL */ | (1u << 30) /* AVX512BW */ | (1u << 17) /* AVX512DQ */ | (1u << 16) /* AVX512F */;
+				if ((cpuid_info[1] & avx512_bits) == avx512_bits)
+				{
+					features |= RRX86_CPU_AVX512;
 
-			// Use the VBMI2 bit (set on ICL+) to set the PREFER512 flag. This is available
-			// on a generation of cores where AVX-512 has no major clock penalty anymore so
-			// whether to use AVX-512 or not is a much more straightforward calculation,
-			// and not so dependent on what else is running at the same time.
-			if (cpuid_info[2] & (1u << 6))
-				features |= RRX86_CPU_PREFER512;
+					// Use the VBMI2 bit (set on ICL+) to set the PREFER512 flag. This is available
+					// on a generation of cores where AVX-512 has no major clock penalty anymore so
+					// whether to use AVX-512 or not is a much more straightforward calculation,
+					// and not so dependent on what else is running at the same time.
+					if (cpuid_info[2] & (1u << 6))
+						features |= RRX86_CPU_PREFER512;
+				}
+			}
 		}
 	}
 #endif

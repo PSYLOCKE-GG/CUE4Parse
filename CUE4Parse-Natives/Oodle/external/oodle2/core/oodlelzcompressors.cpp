@@ -783,7 +783,7 @@ OOFUNC1 rrbool OOFUNC2 OodleLZDecoder_DecodeSome(OodleLZDecoder * decoder,
 		bool is_legacy = OodleLZ_Compressor_IsLegacy(compressor);
 		if ( is_legacy && ! OodleLZLegacyVTable_IsInstalled() )
 		{
-			// on single-compresor streams this should have been already detected,
+			// on single-compressor streams this should have been already detected,
 			//	but on mixed compressor streams this is the first place we see this
 			LogLegacyFormatError(compPtr,compPtrEnd-compPtr);
 			return false;
@@ -1449,9 +1449,9 @@ OOFUNC1 SINTa OOFUNC2 OodleLZ_Decompress(const void * v_compBuf,SINTa compBuffer
 	PARAMETER_CHECK( decodeTo != NULL , 0);
 	PARAMETER_CHECK( compBuf != NULL ,0);
 	
-	if ( decodePartLen == 0 )
+	if ( decodePartLen <= 0 )
 	{
-		ooLogError("OodleLZ_Decompress: asked for len 0\n");
+		ooLogError("OodleLZ_Decompress: asked for invalid decompressed size (<=0)\n");
 		return 0; // 0 == OODLELZ_FAILED
 	}
 	
@@ -1500,7 +1500,17 @@ OOFUNC1 SINTa OOFUNC2 OodleLZ_Decompress(const void * v_compBuf,SINTa compBuffer
 	if ( fuzzSafe == OodleLZ_FuzzSafe_Yes
 		&& ! OodleLZ_Compressor_CanDecodeFuzzSafe(compressor) )
 	{
-		ooLogError("OodleLZ_Decompress: Requested Fuzz Safety, saw a compressor that can't decode Safe\n");
+		bool is_legacy = OodleLZ_Compressor_IsLegacy(compressor);
+		if ( is_legacy && ! OodleLZLegacyVTable_IsInstalled() )
+		{
+			// Does it parse as a legacy format? In that case, there's a few more specific error messages
+			// we want to emit instead of the generic "this codec isn't fuzz safe" one.
+			LogLegacyFormatError(compBuf,compBufferSize);
+		}
+		else
+		{
+			ooLogError("OodleLZ_Decompress: Requested Fuzz Safety, saw a compressor that can't decode Safe\n");
+		}
 		return OODLELZ_FAILED;
 	}
 
@@ -1796,14 +1806,19 @@ OOFUNC1 OodleLZ_Compressor OOFUNC2 OodleLZ_GetAllChunksCompressor(const void * c
 									SINTa compBufSize,
 									SINTa rawLen)
 {
-	RR_ASSERT( compBufSize > 0 );
+	if ( compBufSize <= 0 || rawLen <= 0 )
+	{
+		ooLogError("Invalid buffer sizes passed to OodleLZ_GetAllChunksCompressor\n");
+		return OodleLZ_Compressor_Invalid;
+	}
+
 	RR_ASSERT( rawLen > 0 );
 	
 	OodleLZ_Compressor compressor = OodleLZ_GetFirstChunkCompressor(compBuf,compBufSize,NULL);
 	
 	if ( compressor == OodleLZ_Compressor_Invalid )
 	{
-		ooLogError("Invalid chunk compressor in OodleLZ_GetAllChunksCompressor\n");
+		ooLogError("Malformed data stream header\n");
 		return OodleLZ_Compressor_Invalid;
 	}
 	
@@ -2672,6 +2687,8 @@ OOFUNC1 SINTa OOFUNC2 OodleLZ_GetCompressedBufferSizeNeeded(OodleLZ_Compressor c
 {
 	OOFUNCSTART
 	
+	RR_ASSERT( rawSize >= 0 );
+
 	// make it big enough to handle parallel compression of the chunks
 	// each chunk needs enough space to expand
 	
@@ -2739,6 +2756,9 @@ OOFUNC1 SINTa OOFUNC2 OodleLZ_GetCompressedBufferSizeNeeded(OodleLZ_Compressor c
 	}
 	
 	SINTa numSeekChunks = (rawSize + OODLELZ_BLOCK_LEN-1) / OODLELZ_BLOCK_LEN;
+	
+	//numSeekChunks = RR_MAX(numSeekChunks,1); // for rawSize == 0
+	// OodleLZ_Compress will return OODLELZ_FAILED for rawSize == 0
 
 	SINTa ret = rawSize + numSeekChunks * paddingPerSeekChunk;
 
@@ -2975,6 +2995,12 @@ OOFUNC1 SINTa OOFUNC2 OodleLZ_Compress(OodleLZ_Compressor compressor,
 		
 	struct OodleLZ_CompressOptions local_options_copy;
 	pOptions = OodleLZ_CompressOptions_GetDefault_Or_Copy_And_Validate(pOptions,&local_options_copy);
+
+	if ( pOptions->dictionarySize > 0 && pOptions->dictionarySize < OODLELZ_MIN_DIC_SIZE )
+	{
+		ooLogError("dictionarySize set but too small!\n");
+		return OODLELZ_FAILED;
+	}
     
 	const U8 * rawBuf = VU8(rawBufV);
 	U8 * compBuf = VU8(compBufV);

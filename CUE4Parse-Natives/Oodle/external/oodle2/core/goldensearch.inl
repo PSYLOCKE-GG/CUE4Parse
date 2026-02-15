@@ -20,7 +20,7 @@ double GoldenSearch1d( t_functor & func, double lo, double v_lo, double m1, doub
 	// [lo,m1,m2,hi]
 
 	RR_DURING_ASSERT( double check_m1 = irho*lo + rho*hi );
-	RR_ASSERT( fequal(m1,check_m1,0.00000001) );
+	RR_ASSERT( fequal(m1,check_m1,1e-5) );
 	double m2 = irho*hi + rho*lo;
 
 	double v_m2 = func( m2 );
@@ -44,8 +44,8 @@ double GoldenSearch1d( t_functor & func, double lo, double v_lo, double m1, doub
 			v_m2 = func( m2 );
 		}
 		
-		RR_ASSERT( fequal(m2, irho*hi + rho*lo,0.00000001) );
-		RR_ASSERT( fequal(m1, irho*lo + rho*hi,0.00000001) );
+		RR_ASSERT( fequal(m2, irho*hi + rho*lo,1e-5) );
+		RR_ASSERT( fequal(m1, irho*lo + rho*hi,1e-5) );
 	}
 	
 	// could pick the better triple and use QuadraticExtremum here

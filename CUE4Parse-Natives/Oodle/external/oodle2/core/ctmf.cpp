@@ -76,12 +76,13 @@ void CacheTableMatchFinder::Release()
 	if (ctmf.m_hash_table_arena)
 	{
 		rrArenaAllocator* arena = ctmf.m_hash_table_arena;
-		destruct_virtual(this);
+		this->~CacheTableMatchFinder();
 		arena->Free(this, sizeof(*this));
 	}
 	else
 	{
-		OodleDeleteVirtual(this);
+		this->~CacheTableMatchFinder();
+		OodleFree(this);
 	}
 }
 

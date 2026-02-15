@@ -33,7 +33,7 @@ rrVarBits is a simple struct
         vb = save;
     useful for speculative IO and debugging
 
-most of the type you should be working with rrVarBits_Locals()
+most of the time you should be working with rrVarBits_Locals()
 
 Locals() takes a prefix which is used to make the local var names
 All the macros take the prefix as argument.

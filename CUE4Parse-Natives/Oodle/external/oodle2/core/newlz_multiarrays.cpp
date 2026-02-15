@@ -40,10 +40,6 @@ stop calling them "histos" or "arrays" , use "entropysets"
 
 **/
 
-#define NEWLZ_MULTIARRAYS_MAX_FROM_ARRAYS	16
-// NEWLZ_MULTIARRAYS_MAX_FROM_ARRAYS is not in the format
-// it's just a limit to know the max of "num_arrays" passed in
-
 // the max in the bitstream is 127
 // (because I store it in a byte where top bit can't be set)
 #define NEWLZ_MULTIARRAYS_FORMAT_MAX_NUM_ARRAYS	63
@@ -157,8 +153,10 @@ SINTa newLZ_get_multiarray(const U8 * const comp_start, const U8 * const comp_en
 							bool force_copy_uncompressed,
 							U8 * scratch_ptr, U8 * scratch_end)
 {
-	if ( (comp_end - comp_start) < 4 ) // 1 byte header + 3 = 4 min size
+	if ( (comp_end - comp_start) < 3 ) // 1 byte header + 2 = 3 min size
+	{
 		NEWLZ_ARRAY_RETURN_FAILURE();
+	}
 
 	const U8 * comp_ptr = comp_start;
 	
@@ -1507,7 +1505,7 @@ static SINTa newLZ_put_array_sub_split_N(U8 * const to, U8 * const to_end, const
 			// this makes us technically O(N^2)
 			//	but N is always small (16,32,64 , num entropy arrays)
 			//	and this op is cheap, so just do it
-			for LOOPBACK(h,(int)merge_list_size)
+			for LOOPBACK(h,merge_list_size)
 			{
  				RR_ASSERT( merge_list[h].src1 < merge_list[h].src2 ); 
 				RR_ASSERT( merge_list[h].src1 != i );
@@ -1755,13 +1753,13 @@ static SINTa newLZ_put_array_sub_split_2(U8 * const to, U8 * const to_end, const
 	// try a few initial split points :
 	// scale num_initial_split_points with array size :
 	// @@ constants to tweak
-	int num_initial_split_points = (int)((from_len + 128) / 256);
+	SINTa num_initial_split_points = ((from_len + 128) / 256);
 	num_initial_split_points = RR_CLAMP(num_initial_split_points,1,8);
 
 	Histo256 histo1_split; int histo1_len = 0;
 	Histo256 histo2_split;
 		
-	for(int i=0;i<num_initial_split_points;i++)
+	for(SINTa i=0;i<num_initial_split_points;i++)
 	{
 		SINTa len1_split = ((i+1)*from_len) / (num_initial_split_points+1);
 		SINTa len2_split = from_len - len1_split;
@@ -2754,8 +2752,6 @@ SINTa newLZ_put_multiarray_indexed_sub(U8 * const out_ptr, U8 * const out_end,
 {	
 	//=========================================================
 
-	RR_ASSERT( num_arrays <= NEWLZ_MULTIARRAYS_MAX_FROM_ARRAYS );
-
 	// size is mostly set by count now
 	// but they're kept in range :
 	enum { c_initial_histo_size_min = 16 }; // <- not actually used for histo sizing any more
@@ -3214,10 +3210,16 @@ SINTa newLZ_put_multiarray_indexed_sub(U8 * const out_ptr, U8 * const out_end,
 	// trellis walk chunks to choose coding set
 	
 	// array_intervals is the output of the trellis walk
+	// there's a set of array_intervals for each input array (num_arrays)
+	//	note num_arrays can be larger than the number of entropy arrays we make
+	//	entropy array count is bounded in the format but num_arrays is not
+	//vector_a<indexed_interval> array_intervals[NEWLZ_MULTIARRAYS_MAX_FROM_ARRAYS];
+	RR_STACK_ARRAY(array_intervals, vector_a<indexed_interval>, num_arrays);
+	default_construct(array_intervals,num_arrays);
+	
+	// reserve arena space for all array_intervals
 	// @@@@ this is hard to bound; in theory there could be an interval per byte
 	//		(actually the cost clamp I do forces min interval to 2 bytes, but still)
-	vector_a<indexed_interval> array_intervals[NEWLZ_MULTIARRAYS_MAX_FROM_ARRAYS];
-	
 	rrScopeArenaAlloc array_intervals_space_alloc;
 	SINTa array_intervals_space_needed = sizeof(indexed_interval) * (tot_from_len + num_arrays) / 2;
 	array_intervals_space_alloc.Alloc(array_intervals_space_needed,arena);
@@ -3839,7 +3841,7 @@ SINTa newLZ_put_multiarray_indexed_sub(U8 * const out_ptr, U8 * const out_end,
 	
 	//=====================================================================
 	
-	int tot_num_indices = tot_num_intervals + (int)num_arrays;
+	SINTa tot_num_indices = tot_num_intervals + num_arrays;
 
 	#if 0
 	// track & log the max of num_indices :
@@ -3859,7 +3861,7 @@ SINTa newLZ_put_multiarray_indexed_sub(U8 * const out_ptr, U8 * const out_end,
 	//	huge difference in 14-16 bits
 	//	at 14 bits I've seen over 8000 intervals on DUKEGP.WAD
 
-	static int s_tot_num_indices_max = 0;
+	static SINTa s_tot_num_indices_max = 0;
 	if ( tot_num_indices > s_tot_num_indices_max )
 	{
 		s_tot_num_indices_max = tot_num_indices;

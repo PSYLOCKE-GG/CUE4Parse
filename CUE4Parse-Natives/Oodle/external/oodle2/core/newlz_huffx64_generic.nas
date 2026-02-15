@@ -21,6 +21,11 @@
             shrx            %1, %1, rcx
     %endmacro
 
+	; Always enable Raptor Lake workaround on BMI2 targets.
+	; Empirically, perf impact is low even on unaffected machines,
+	; so not worth having an extra CPU path for this.
+    %define RAPTOR_LAKE_WORKAROUND
+
 %else
 
     %define FUNCNAME oodle_newLZ_huff_x64_generic_kern
@@ -39,7 +44,11 @@
 leaf_func_with_prologue FUNCNAME
         load_first_arg  rsi ; KrakenHuffState* state
         set_state_reg   KrakenHuffState, rsi
+%ifdef EXPERIMENTAL_BMI2_VARIANT
+        offset_state_by KrakenHuffState.tables ; so our table loads are offset 0 (makes them smaller)
+%else
         offset_state_by 112                     ; offset so "tables" isn't outside disp8 range from base
+%endif
 
         mov             r9, [STATEP(bitp,1)]    ; in1
         mov             r10, [STATEP(bitp,2)]   ; in2
@@ -127,7 +136,12 @@ leaf_func_with_prologue FUNCNAME
         movzx           rcx, word [STATE32(tables,0)+rcx*2] ; cl=len ch=sym
         SHR64_BY_CL     %1                      ; bits >>= len
         sub             %2, cl                  ; bitc -= len
+%ifdef RAPTOR_LAKE_WORKAROUND
+        shr             ecx, 8                  ; avoid mov [...], ch to work around 13th/14th gen Intel bug
+        mov             [rdi+out_offs], cl      ; store sym
+%else
         mov             [rdi+out_offs], ch      ; store sym
+%endif
         %assign out_offs out_offs+1
 %endmacro
 

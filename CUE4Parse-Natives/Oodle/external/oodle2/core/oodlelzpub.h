@@ -1270,6 +1270,7 @@ IDOC OOFUNC1 OO_SINTa OOFUNC2 OodleLZ_GetCompressedBufferSizeNeeded(OodleLZ_Comp
 
 	note this is actually larger than the maximum size of a compressed stream, it includes overrun padding.
 
+	note rawSize should be >= 1 ; OodleLZ_Compress will fail on rawSize = 0 and GetCompressedBufferSizeNeeded will return zero
 */
 
 // decBuf needs to be a little larger than rawLen,

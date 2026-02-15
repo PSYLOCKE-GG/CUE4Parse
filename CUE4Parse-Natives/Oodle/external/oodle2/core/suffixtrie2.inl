@@ -241,7 +241,7 @@ struct ChildrenFull256 : public Children
 // NOTE: this code might be possibly to unify with SuffixTrieObject below
 // but for now, keep them separate and stick to purely mechanical changes for
 // the big refactor
-class SuffixTrie2MatchFinder : public IncrementalMatchFinder
+class SuffixTrie2MatchFinder final : public IncrementalMatchFinder
 {
 	const U8 * m_ubuf;
 	int m_size;
@@ -286,10 +286,12 @@ class SuffixTrie2MatchFinder : public IncrementalMatchFinder
 
 public:
 	SuffixTrie2MatchFinder(const U8 * ubuf, int size, int startRecordingPos, LRMSet * lrms, OodleLZ_Jobify jobify, void * jobify_userPtr, int firstbytes, rrArenaAllocator *scratch);
-	~SuffixTrie2MatchFinder();
 
-	void Release();
-	int ProcessChunk(int chunkSize, UnpackedMatchPair * matches, int maxPairs); // returns number of bytes processed (0 if we're at end)
+	void Release() final;
+	int ProcessChunk(int chunkSize, UnpackedMatchPair * matches, int maxPairs) override; // returns number of bytes processed (0 if we're at end)
+
+private:
+	~SuffixTrie2MatchFinder();
 };
 
 struct LRMJobDesc
@@ -398,12 +400,13 @@ void SuffixTrie2MatchFinder::Release()
 	if (scratch_arena)
 	{
 		rrArenaAllocator* arena = scratch_arena;
-		destruct_virtual(this);
+		this->~SuffixTrie2MatchFinder();
 		arena->Free(this, sizeof(*this));
 	}
 	else
 	{
-		OodleDeleteVirtual(this);
+		this->~SuffixTrie2MatchFinder();
+		OodleFree(this);
 	}
 }
 

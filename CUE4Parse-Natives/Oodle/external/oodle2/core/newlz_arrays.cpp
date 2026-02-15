@@ -1093,8 +1093,9 @@ static SINTa count_zero_run_len(const U32 * values, SINTa count)
 U32 newlz_array_estimate_complen_bits(const U32 * histo,int alphabet, U32 sumCounts)
 {
 	RR_ASSERT( sumCounts == rrSumOfHistogram(histo,alphabet) );
-	// counts are 17 bit max in newlz
-	RR_ASSERT( sumCounts <= 128*1024 );
+	// we know counts are 17 bit max in newlz (due to 128k quanta)
+	//RR_ASSERT( sumCounts <= 128*1024 );
+	RR_ASSERT( sumCounts <= (1U<<20) ); // invSumI in 30 bits is the limiting factor here
 
 	U32 newlz_array_header_size_bits = 5*8; // 5 bytes for newlz compressed array header
 
@@ -1119,7 +1120,7 @@ U32 newlz_array_estimate_complen_bits(const U32 * histo,int alphabet, U32 sumCou
 	}
 
 
-	S32 invSumI = (1<<30) / sumCounts;
+	S32 invSumI = (1<<30) / sumCounts;  // this is a poor approximation for large sumCounts
 
 	// This estimates the size produced by the "alphabet shape" coder for Hufflens2/TANS,
 	// plus the size of the payload.
@@ -1186,7 +1187,7 @@ U32 newlz_array_estimate_complen_bits(const U32 * histo,int alphabet, U32 sumCou
 	// cl_sum is in bits scaled up by RR_LOG2TABLE_ONE_SHIFT
 	cl_sum >>= RR_LOG2TABLE_ONE_SHIFT;
 
-	U32 bits = header_sum + (U32)cl_sum;
+	U32 bits = header_sum + check_value_cast<U32>(cl_sum);
 
 	bits += newlz_array_header_size_bits;
 
@@ -1196,7 +1197,7 @@ U32 newlz_array_estimate_complen_bits(const U32 * histo,int alphabet, U32 sumCou
 
 F32 newlz_array_estimate_huff_J(const U32 * histo,int alphabet,SINTa sumCounts,F32 lambda,const OodleSpeedFit * speedfit)
 {
-	U32 bits = newlz_array_estimate_complen_bits(histo,alphabet,(U32)sumCounts);
+	U32 bits = newlz_array_estimate_complen_bits(histo,alphabet,check_value_cast<U32>(sumCounts));
 	// J is in bytes
 	F32 J = (bits/8.f) + lambda * speedfit_estimate_entropy_array_time(speedfit,sumCounts);
 	return J;

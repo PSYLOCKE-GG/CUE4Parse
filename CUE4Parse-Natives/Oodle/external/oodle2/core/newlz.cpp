@@ -1957,6 +1957,7 @@ static SINTa newLZ_encode_chunk_fast_mode(const newlz_vtable * vtable,
 		RR_MIN(NEWLZ_MAX_OFFSET,pOptions->dictionarySize)
 		: NEWLZ_MAX_OFFSET;
 
+	RR_ASSERT(dictionarySize >= NEWLZ_MIN_OFFSET); // OODLELZ_MIN_DIC_SIZE in public API should ensure this
 	U32 dictionary_span = dictionarySize - NEWLZ_MIN_OFFSET;
 
 	newLZ_CTMF * ctmf = (newLZ_CTMF *)vtable->matcher;
@@ -5937,7 +5938,12 @@ void Kraken_FillVTable(
 	{
 		// Fast : do_lazy ON
 		//	note : no literal step-ahead, incompatible with lazy
-		typedef CTMF<U32,2,0,4>	newLZ_CTMF_Fast;
+
+		// this is where we switch to the Fast/Normal hash table sizer range
+		// if not explicitly given, limit table to 21 bits
+		if ( pOptions->matchTableSizeLog2 <= 0 ) table_bits = RR_MIN(table_bits,21);
+		
+		typedef CTMF<U32,3,0,4>	newLZ_CTMF_Fast;
 	
 		newlz_vtable_setup_ctmf<newLZ_CTMF_Fast>(&vtable,dictionaryBase,raw,table_bits,arena,hash_len);
 		vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_Fast,1,1,0>;

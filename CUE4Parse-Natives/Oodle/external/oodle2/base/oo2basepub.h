@@ -23,7 +23,7 @@ PUBTYPESTART
 
 //===================================================
 // Oodle2 Base header
-// (C) Copyright 1994-2024 Epic Games Tools LLC
+// (C) Copyright 1994-2026 Epic Games Tools LLC
 //===================================================
 
 #ifndef __OODLE2BASE_H_INCLUDED__

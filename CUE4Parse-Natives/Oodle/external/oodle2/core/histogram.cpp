@@ -216,6 +216,7 @@ U64 rrCodeLenOfHistogramT(const U32 * counts,int numCounts,U32 sumCounts)
     if ( sumCounts == 0 )
 		return 0;
 		
+	RR_ASSERT( sumCounts <= (1<<24) ); // invSum becomes poor if sumCounts is too high
 	S32 invSumI = (1<<30) / sumCounts;
 	
     U64 H = 0;
@@ -245,6 +246,7 @@ U64 rrCodeLenOfHistogramPow2External(const U32 * counts,int numCounts,const U32 
 {
 	//S32 invSumI = (1<<(30-counts_for_codelen_shift));
 	S32 invSumI_shift = (30-counts_for_codelen_shift);
+	RR_ASSERT( invSumI_shift >= 0 );
 	
     U64 H = 0;
     for(int i=0;i<numCounts;i++)

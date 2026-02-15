@@ -2985,6 +2985,7 @@ static SINTa newLZF_encode_chunk_fast_mode(const newlz_vtable * vtable,
 		RR_MIN(NEWLZF_MAX_OFFSET,pOptions->dictionarySize)
 		: NEWLZF_MAX_OFFSET;
 
+	RR_ASSERT(dictionarySize >= NEWLZF_MIN_OFFSET); // OODLELZ_MIN_DIC_SIZE in public API should ensure this
 	U32 dictionary_span = dictionarySize - NEWLZF_MIN_OFFSET;
 
 	newLZ_CTMF * ctmf = (newLZ_CTMF *) vtable->matcher;

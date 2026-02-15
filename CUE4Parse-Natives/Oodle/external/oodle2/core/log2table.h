@@ -199,7 +199,7 @@ OODLE_NS_END
 
 //======================================================================
 
-#ifdef OODLE_BUILDING_DATA
+#if defined(OODLE_BUILDING_DATA) || defined(RR_LOG2TABLE_SIZE)
 
 // Oodle Data needs biglog2table for encoder choices
 
@@ -210,7 +210,7 @@ OODLE_NS_END
 OODLE_NS_START
 
 template <int t_one_shift>
-S32 log2tabled(U32 x)
+static inline S32 log2tabled(U32 x)
 {
 	return log2tabled_big<t_one_shift>(x);
 }
@@ -226,8 +226,9 @@ OODLE_NS_END
 OODLE_NS_START
 
 template <int t_one_shift>
-S32 log2tabled(U32 x)
+static inline S32 log2tabled(U32 x)
 {
+	RR_ASSERT( x != 0 );
 	return log2tabled_bk<t_one_shift>(x);
 }
 

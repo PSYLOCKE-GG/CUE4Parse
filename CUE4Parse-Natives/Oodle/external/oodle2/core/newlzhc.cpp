@@ -838,7 +838,7 @@ typedef CTMF<U32,2,SECOND_HASH_LEN,NEWLZHC_MML_NORMAL>	newLZHC_CTMF_Normal;
 // lower depth + 2nd hash , or more depth?
 //  2nd hash way is slower, more compression
 //typedef CTMF<1,SECOND_HASH_LEN,NEWLZHC_MML_NORMAL,0>	newLZHC_CTMF_Fast;
-typedef CTMF<U32,2,0,NEWLZHC_MML_NORMAL>	newLZHC_CTMF_Fast;
+typedef CTMF<U32,3,0,NEWLZHC_MML_NORMAL>	newLZHC_CTMF_Fast;
 
 typedef CTMF<U32,1,0,NEWLZHC_MML_NORMAL>	newLZHC_CTMF_VeryFast;
 typedef CTMF<U32,0,0,NEWLZHC_MML_NORMAL>	newLZHC_CTMF_SuperFast;
@@ -6680,6 +6680,8 @@ void Leviathan_FillVTable(
 	}
 	else if ( level == OodleLZ_CompressionLevel_Fast )
 	{
+		if ( pOptions->matchTableSizeLog2 <= 0 ) table_bits = RR_MIN(table_bits,21);
+
 		newlz_vtable_setup_ctmf<newLZHC_CTMF_Fast>(&vtable,dictionaryBase,raw,table_bits,arena);
 
 		vtable.fp_encode_chunk = newLZHC_encode_chunk<newLZHC_CTMF_Fast,1,1,0>;

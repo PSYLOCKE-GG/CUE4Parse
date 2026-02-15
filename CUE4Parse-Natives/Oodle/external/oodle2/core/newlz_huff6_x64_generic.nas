@@ -21,6 +21,11 @@
             shrx            %1, %1, rcx
     %endmacro
 
+	; Always enable Raptor Lake workaround on BMI2 targets.
+	; Empirically, perf impact is low even on unaffected machines,
+	; so not worth having an extra CPU path for this.
+    %define RAPTOR_LAKE_WORKAROUND
+
 %else
 
     %define FUNCNAME oodle_newLZ_huff6_x64_generic_kern
@@ -41,7 +46,11 @@ leaf_func_with_prologue FUNCNAME
 
         load_first_arg  rsi ; KrakenHuffState* state
         set_state_reg   KrakenHuffState, rsi
+%ifdef RAPTOR_LAKE_WORKAROUND
+        offset_state_by KrakenHuffState.tables ; so our table loads are offset 0 (makes them smaller)
+%else
         offset_state_by 112                     ; disp8 offsets are [-128,127]; maximize useful range from rsi
+%endif
 
         ; Stream layout: doubled-up version of regular 3-stream layout, even if
         ; the resulting numbering is a bit strange. Two triples:
@@ -203,7 +212,12 @@ leaf_func_with_prologue FUNCNAME
 %endif
         movzx           ecx, word [STATE32(tables,0)+rcx*2] ; cl=len ch=sym
         SHR64_BY_CL     %1                      ; bits >>= len
+%ifdef RAPTOR_LAKE_WORKAROUND
+        shr             ecx, 8                  ; avoid mov [...], ch to work around 13th/14th gen Intel bug
+        mov             [%2+out_offs_%[%2]], cl ; store sym
+%else
         mov             [%2+out_offs_%[%2]], ch ; store sym
+%endif
         %assign out_offs_%[%2] out_offs_%[%2]+1
 %endmacro
 
@@ -223,7 +237,12 @@ leaf_func_with_prologue FUNCNAME
         movzx           ecx, word [STATE32(tables,0)+rcx*2] ; cl=len ch=sym
         CLZ64           %1, %1                  ; bits_consumed (prior to current sym)
         add             %1, rcx                 ; bits_consumed (current sym included)
+%ifdef RAPTOR_LAKE_WORKAROUND
+        shr             ecx, 8                  ; avoid mov [...], ch to work around 13th/14th gen Intel bug
+        mov             [%2+out_offs_%[%2]], cl ; store sym
+%else
         mov             [%2+out_offs_%[%2]], ch ; store sym
+%endif
         %assign out_offs_%[%2] out_offs_%[%2]+1
 %endmacro
 
@@ -253,8 +272,14 @@ leaf_func_with_prologue FUNCNAME
 %endif
 
 %macro ADVANCESTREAM 4 ; args: bits bitsb in dirop
+%ifdef BMI2
+		; not a functional change, code size change for Jcc erratum workaround (sigh)
+        movzx           ecx, %2
+        shr             ecx, 3
+%else
         movzx           rcx, %2
         shr             rcx, 3
+%endif
         %4              %3, rcx                 ; in +-= bits_consumed >> 3
         and             %1, 7                   ; leftover_bits
 %endmacro
@@ -272,7 +297,8 @@ leaf_func_with_prologue FUNCNAME
         ADVANCESTREAM   r15,r15b,r9,  add       ; stream5+
 
         ; check whether we're done
-        ; NOTE(fg): cmp/branch here are nowhere near a 32b boundary
+        ; NOTE(fg): cmp/branch here are close to 32B boundary in BMI2 (Raptor Lake workaround)
+		; path, hence the finessing code size with the ADVANCESTREAM tweak above.
         cmp             rdi, [STATEP(decodeend,1)] ; do {...} while (decodeptr[1]<decodeend[1])
         jb              .bulk_inner
         hot_trace_end

@@ -22,7 +22,7 @@ OODLE_NS_START
 // Therefore, disable for now.
 #define CTMF_RESET_PREVML_BETWEEN_ROWS 0
 
-class CacheTableMatchFinder : public IncrementalMatchFinder
+class CacheTableMatchFinder final : public IncrementalMatchFinder
 {
 	static constexpr int SECOND_HASH_LEN = 8; // eight seems to be best
 
@@ -67,10 +67,12 @@ class CacheTableMatchFinder : public IncrementalMatchFinder
 
 public:
 	CacheTableMatchFinder(const U8 * ubuf, SINTa size, SINTa startRecordingPos, LRMSet * lrms, rrArenaAllocator * arena);
-	~CacheTableMatchFinder();
 
-	void Release();
-	int ProcessChunk(int chunkSize, UnpackedMatchPair * matches, int maxPairs);
+	void Release() final;
+	int ProcessChunk(int chunkSize, UnpackedMatchPair * matches, int maxPairs) override;
+
+private:
+	~CacheTableMatchFinder();
 };
 
 OODLE_NS_END

@@ -1412,7 +1412,7 @@ SINTa newlz_compress_vtable(newlz_vtable * vtable,
 		if ( retjob->mf )
 		{
 			THREADPROFILESCOPE("DeleteMatchFinder");
-			OodleDeleteVirtual(retjob->mf);
+			retjob->mf->Release();
 		}
 
 		++next_retire_job;

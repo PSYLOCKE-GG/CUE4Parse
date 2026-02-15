@@ -19,8 +19,8 @@ OODLE_NS_START
 #ifndef LOOP
 #define LOOP(var,count)	(SINTa var=0;(var)<(count);var++)
 #define LOOPBACK(var,count)	(SINTa var=(count)-1;(var)>=0;var--)
-#define LOOPVEC(var,vec)    (SINTa var=0; (var) < vec.sizea(); var++)
-#define LOOPVECBACK(var,vec)    (SINTa var=vec.sizea()-1; (var)>=0; var--)
+#define LOOPVEC(var,vec)    (SINTa var=0; (var) < (vec).sizea(); var++)
+#define LOOPVECBACK(var,vec)    (SINTa var=(vec).sizea()-1; (var)>=0; var--)
 #endif
 
 #define LOOPINT(var,count)	(int var=0;(var)<(count);var++)

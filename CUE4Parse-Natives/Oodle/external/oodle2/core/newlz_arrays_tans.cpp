@@ -1224,6 +1224,17 @@ static bool tansx2_x64_bmi2_asm(KrakenTansState *s)
     return tansx2_finish(s);
 }
 
+// ASM BMI2 Raptor Lake version
+extern "C" bool oodle_newLZ_tans_x64_bmi2_rpl_kern(KrakenTansState *s);
+
+static bool tansx2_x64_bmi2_rpl_asm(KrakenTansState *s)
+{
+	SIMPLEPROFILE_SCOPE_N(tansx2_x64_bmi2_rpl_asm,rrPtrDiff(s->decodeend - s->decodeptr));
+
+	if (!oodle_newLZ_tans_x64_bmi2_rpl_kern(s)) return false;
+	return tansx2_finish(s);
+}
+
 #elif defined(NEWLZ_ARM64_TANS_ASM)
 
 // ASM version
@@ -1407,9 +1418,20 @@ SINTa newlz_get_array_tans(const U8 * const comp, SINTa comp_len, U8 * const to,
 		#elif defined(NEWLZ_X64GENERIC_TANS_ASM)
 		
 		if (rrCPUx86_feature_present(RRX86_CPU_BMI2))
-			ok = tansx2_x64_bmi2_asm(&s);
+		{
+			if (rrCPUx86_feature_present(RRX86_CPU_RAPTOR_LAKE))
+			{
+				ok = tansx2_x64_bmi2_rpl_asm(&s);
+			}
+			else
+			{
+				ok = tansx2_x64_bmi2_asm(&s);
+			}
+		}
 		else
+		{
 			ok = tansx2_x64_asm(&s);
+		}
 		#elif defined(NEWLZ_ARM64_TANS_ASM)
 		ok = tansx2_arm64_asm(&s);
 		#elif defined(__RAD64REGS__)

@@ -23,8 +23,8 @@ struct entropyset_codelens_U16_256
 };
 
 // "cl" ("codelen") is in bits scaled up by ENTROPYSET_CODELEN_ONE_BIT_SHIFT (fixed point)
-enum { ENTROPYSET_CODELEN_ONE_BIT_SHIFT = 8 };
-enum { ENTROPYSET_CODELEN_ONE_BIT = 1<<ENTROPYSET_CODELEN_ONE_BIT_SHIFT };
+static constexpr S32 ENTROPYSET_CODELEN_ONE_BIT_SHIFT = 8;
+static constexpr S32 ENTROPYSET_CODELEN_ONE_BIT = 1<<ENTROPYSET_CODELEN_ONE_BIT_SHIFT;
 
 // ENTROPYSET_CODELEN can fit a 128k chunk in a U32
 //	17 bits + 4 bit (max codelen 16 bits) + 8 = 29 bits

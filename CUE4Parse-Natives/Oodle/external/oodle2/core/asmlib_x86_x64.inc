@@ -195,7 +195,6 @@
     %assign offs_in_prologue 0
     %xdefine unwindcode
     %rep %0
-        %rotate 1
         win64_get_regnum %1
         ; unwind code:
         ; CodeOffset=offs_in_prologue
@@ -208,6 +207,7 @@
         %else
             %assign offs_in_prologue offs_in_prologue+1
         %endif
+        %rotate 1
     %endrep
 %endmacro
 

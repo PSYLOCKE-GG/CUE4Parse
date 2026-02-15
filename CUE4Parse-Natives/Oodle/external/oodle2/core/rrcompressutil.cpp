@@ -32,7 +32,7 @@ void rrLogCompression(S64 UnPackedLen,S64 PackedLen)
 	RR_ASSERT( UnPackedLen >= 0 && PackedLen >= 0 );
 	if ( UnPackedLen <= 0 || PackedLen <= 0 )
 	{
-		rrprintf("%10" RR_S64_FMT " -> %10" RR_S64_FMT " (abnormal)", UnPackedLen,PackedLen);
+		rrprintf("%10" PRId64 " -> %10" PRId64 " (abnormal)", UnPackedLen,PackedLen);
 		return;
 	}
 
