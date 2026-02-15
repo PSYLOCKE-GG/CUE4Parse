@@ -2,34 +2,35 @@
 using System.Runtime.CompilerServices;
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
-using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 
-namespace CUE4Parse.FileProvider.Objects
+namespace CUE4Parse.FileProvider.Objects;
+
+public class OsGameFile : VersionedGameFile
 {
-    public class OsGameFile : VersionedGameFile
+    public readonly FileInfo ActualFile;
+
+    public OsGameFile(DirectoryInfo baseDir, FileInfo info, string mountPoint, VersionContainer versions)
+        : base(System.IO.Path.GetRelativePath(baseDir.FullName, info.FullName).Replace('\\', '/'), info.Length, versions)
     {
-        public readonly FileInfo ActualFile;
+        ActualFile = info;
+    }
 
-        public OsGameFile(DirectoryInfo baseDir, FileInfo info, string mountPoint, VersionContainer versions)
-            : base(System.IO.Path.GetRelativePath(baseDir.FullName, info.FullName).Replace('\\', '/'), info.Length, versions)
+    public override bool IsEncrypted => false;
+    public override CompressionMethod CompressionMethod => CompressionMethod.None;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override byte[] Read(FByteBulkDataHeader? header = null)
+    {
+        if (header != null)
         {
-            ActualFile = info;
+            using var stream = ActualFile.OpenRead();
+            stream.Seek(header.Value.OffsetInFile, SeekOrigin.Begin);
+            var buffer = new byte[header.Value.SizeOnDisk];
+            stream.ReadExactly(buffer, 0, buffer.Length);
+            return buffer;
         }
 
-        public override bool IsEncrypted => false;
-        public override CompressionMethod CompressionMethod => CompressionMethod.None;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override byte[] Read(FByteBulkDataHeader? header = null) => File.ReadAllBytes(ActualFile.FullName);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override FArchive CreateReader(FByteBulkDataHeader? header = null)
-        {
-            var stream = new BufferedStream(
-                ActualFile.Open(FileMode.Open, FileAccess.Read, FileShare.ReadWrite),
-                81920);
-            return new FStreamArchive(Path, stream, Versions);
-        }
+        return File.ReadAllBytes(ActualFile.FullName);
     }
 }
