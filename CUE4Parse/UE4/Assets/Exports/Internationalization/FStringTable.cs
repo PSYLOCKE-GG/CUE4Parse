@@ -21,8 +21,20 @@ public class FStringTable
         {
             if (Ar.Game is EGame.GAME_CodeVein2) return CodeVein2StringEncryption.CodeVein2EncryptedFString(Ar, ECV2DecryptionMode.StringTable);
             var value = Ar.ReadFString();
-            if (Ar.Game == EGame.GAME_MarvelRivals && (Ar.Versions.ArbitraryVersion == null ||
-                                                       Ar.Versions.ArbitraryVersion >= new ArbitraryVersion("1.1.1933977"))) Ar.Position += 4;
+
+            if (Ar.Game == EGame.GAME_MarvelRivals)
+            {
+                if (Ar.Versions.ArbitraryVersion == null ||
+                    Ar.Versions.ArbitraryVersion >= new ArbitraryVersion("1.1.3006564"))
+                {
+                    Ar.SkipFString();
+                }
+                else if (Ar.Versions.ArbitraryVersion >= new ArbitraryVersion("1.1.1933977"))
+                {
+                    Ar.Position += 4;
+                }
+            }
+
             if (Ar.Game == EGame.GAME_LostRecordsBloomAndRage)
             {
                 Ar.SkipFString();
