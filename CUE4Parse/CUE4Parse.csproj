@@ -74,32 +74,31 @@
   </Target>
 
   <!-- Native libraries for NuGet package -->
-  <ItemGroup Condition="Exists('..\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.dll')">
-    <None Include="..\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.dll">
-      <Pack>true</Pack>
-      <PackagePath>runtimes/win-x64/native</PackagePath>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>CUE4Parse-Natives.dll</Link>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup Condition="Exists('$(CMakeBuildDir)/CUE4Parse-Natives.so')">
-    <None Include="$(CMakeBuildDir)/CUE4Parse-Natives.so">
-      <Pack>true</Pack>
-      <PackagePath>runtimes/linux-x64/native</PackagePath>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>CUE4Parse-Natives.so</Link>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup Condition="Exists('$(CMakeBuildDir)/CUE4Parse-Natives.dylib')">
-    <None Include="$(CMakeBuildDir)/CUE4Parse-Natives.dylib">
-      <Pack>true</Pack>
-      <PackagePath>runtimes/osx-x64/native</PackagePath>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>CUE4Parse-Natives.dylib</Link>
-    </None>
-  </ItemGroup>
+  <Target Name="CopyNativeLibraries" AfterTargets="Build-Natives" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <None Include="..\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.dll"
+            Condition="Exists('..\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.dll')">
+        <Pack>true</Pack>
+        <PackagePath>runtimes/win-x64/native</PackagePath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Link>CUE4Parse-Natives.dll</Link>
+      </None>
+      <None Include="$(CMakeBuildDir)/CUE4Parse-Natives.so"
+            Condition="Exists('$(CMakeBuildDir)/CUE4Parse-Natives.so')">
+        <Pack>true</Pack>
+        <PackagePath>runtimes/linux-x64/native</PackagePath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Link>CUE4Parse-Natives.so</Link>
+      </None>
+      <None Include="$(CMakeBuildDir)/CUE4Parse-Natives.dylib"
+            Condition="Exists('$(CMakeBuildDir)/CUE4Parse-Natives.dylib')">
+        <Pack>true</Pack>
+        <PackagePath>runtimes/osx-x64/native</PackagePath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Link>CUE4Parse-Natives.dylib</Link>
+      </None>
+    </ItemGroup>
+  </Target>
 
   <!-- remove everything?? -->
   <Target Name="CleanCMakeProj" BeforeTargets="BeforeClean">
