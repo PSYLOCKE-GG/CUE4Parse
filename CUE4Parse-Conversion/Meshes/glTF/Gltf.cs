@@ -253,7 +253,11 @@ namespace CUE4Parse_Conversion.Meshes.glTF
         public static (VertexColorXTextureX, VertexColorXTextureX, VertexColorXTextureX) PrepareUVsAndTexCoords(
             CBaseMeshLod lod, CMeshVertex vert1, CMeshVertex vert2, CMeshVertex vert3, uint[] indices)
         {
-            return PrepareUVsAndTexCoords(lod.VertexColors ?? new FColor[lod.NumVerts], vert1, vert2, vert3,
+            // Always use white vertex colors — UE4 vertex colors encode AO/masks/tinting
+            // that don't map to glTF's baseColor * vertexColor multiply model
+            var colors = new FColor[lod.NumVerts];
+            Array.Fill(colors, new FColor(255, 255, 255, 255));
+            return PrepareUVsAndTexCoords(colors, vert1, vert2, vert3,
                 lod.ExtraUV.Value, indices);
         }
 
@@ -261,9 +265,10 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             FColor[] colors, CMeshVertex vert1, CMeshVertex vert2, CMeshVertex vert3, FMeshUVFloat[][] uvs, uint[] indices)
         {
             var (uvs1, uvs2, uvs3) = PrepareUVs(vert1, vert2, vert3, uvs, indices);
-            var c1 = new VertexColorXTextureX((Vector4)colors[indices[0]]/255, uvs1);
-            var c2 = new VertexColorXTextureX((Vector4)colors[indices[1]]/255, uvs2);
-            var c3 = new VertexColorXTextureX((Vector4)colors[indices[2]]/255, uvs3);
+            // FColor's implicit Vector4 cast already normalizes 0-255 → 0.0-1.0
+            var c1 = new VertexColorXTextureX((Vector4)colors[indices[0]], uvs1);
+            var c2 = new VertexColorXTextureX((Vector4)colors[indices[1]], uvs2);
+            var c3 = new VertexColorXTextureX((Vector4)colors[indices[2]], uvs3);
             return (c1, c2, c3);
         }
 
@@ -304,7 +309,7 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             return res;
         }
 
-        public static FQuat SwapYZ(FQuat quat) => new (quat.X, quat.Z, quat.Y, quat.W);
+        public static FQuat SwapYZ(FQuat quat) => new (quat.X, quat.Z, quat.Y, -quat.W);
 
         public static Vector4 SwapYZAndNormalize(Vector4 vec)
         {
