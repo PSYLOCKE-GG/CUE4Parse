@@ -242,10 +242,13 @@ public sealed class IoPackage : AbstractUePackage
             {
                 // Create
                 var clas = ResolveObjectIndex(export.ClassIndex);
-                var struc = clas?.Object?.Value as UStruct;
+                UStruct? struc = null;
+                try { struc = clas?.Object?.Value as UStruct; }
+                catch (InvalidOperationException) { /* circular lazy dependency */ }
                 var obj = ConstructObject(struc, this, export.ObjectFlags);
                 obj.Name = CreateFNameFromMappedName(export.ObjectName).Text;
-                obj.Outer = (ResolveObjectIndex(export.OuterIndex) as ResolvedExportObject)?.Object?.Value ?? this;
+                try { obj.Outer = (ResolveObjectIndex(export.OuterIndex) as ResolvedExportObject)?.Object?.Value ?? this; }
+                catch (InvalidOperationException) { obj.Outer = this; }
                 obj.Super = ResolveObjectIndex(export.SuperIndex) as ResolvedExportObject;
                 obj.Template = ResolveObjectIndex(export.TemplateIndex) as ResolvedExportObject;
                 obj.Flags |= export.ObjectFlags; // We give loaded objects the RF_WasLoaded flag in ConstructObject, so don't remove it again in here
