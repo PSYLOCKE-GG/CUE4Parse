@@ -200,19 +200,16 @@ namespace CUE4Parse.UE4.Assets
                     ExportsLazy[i] = new Lazy<UObject>(() =>
                     {
                         // Create
-                        UStruct? struc = null;
-                        try { struc = ResolvePackageIndex(export.ClassIndex)?.Object?.Value as UStruct; }
-                        catch (InvalidOperationException) { /* circular lazy dependency */ }
-                        var obj = ConstructObject(struc, this, (EObjectFlags) export.ObjectFlags);
+                        var obj = ConstructObject(ResolvePackageIndex(export.ClassIndex), this, (EObjectFlags) export.ObjectFlags);
                         obj.Name = export.ObjectName.Text;
-                        try { obj.Outer = (ResolvePackageIndex(export.OuterIndex) as ResolvedExportObject)?.Object.Value ?? this; }
-                        catch (InvalidOperationException) { obj.Outer = this; }
+                        obj.Outer = ResolvePackageIndex(export.OuterIndex) as ResolvedExportObject;
+                        obj.Outer ??= new ResolvedPackageObject(this);
                         obj.Super = ResolvePackageIndex(export.SuperIndex) as ResolvedExportObject;
                         obj.Template = ResolvePackageIndex(export.TemplateIndex) as ResolvedExportObject;
                         obj.Flags |= (EObjectFlags) export.ObjectFlags; // We give loaded objects the RF_WasLoaded flag in ConstructObject, so don't remove it again in here
 
-                        // Serialize - clone archive for thread safety
-                        var Ar = (FAssetArchive) exportArchive.Clone();
+                        // Serialize
+                        var Ar = (FAssetArchive) uexpAr.Clone();
                         Ar.SeekAbsolute(export.SerialOffset, SeekOrigin.Begin);
                         DeserializeObject(obj, Ar, export.SerialSize);
                         // TODO right place ???
@@ -353,7 +350,7 @@ namespace CUE4Parse.UE4.Assets
             }
 
             public override FName Name => _export?.ObjectName ?? "None";
-            public override ResolvedObject Outer => Package.ResolvePackageIndex(_export.OuterIndex) ?? new ResolvedLoadedObject((UObject) Package);
+            public override ResolvedObject Outer => Package.ResolvePackageIndex(_export.OuterIndex) ?? new ResolvedPackageObject(Package);
             public override ResolvedObject? Class => Package.ResolvePackageIndex(_export.ClassIndex);
             public override ResolvedObject? Super => Package.ResolvePackageIndex(_export.SuperIndex);
         }
@@ -487,17 +484,10 @@ namespace CUE4Parse.UE4.Assets
             {
                 Trace.Assert(_phase == LoadPhase.Create);
                 _phase = LoadPhase.Serialize;
-                _object = _package.ConstructObject(_package.ResolvePackageIndex(_export.ClassIndex)?.Object?.Value as UStruct, _package, (EObjectFlags) _export.ObjectFlags);
+                _object = _package.ConstructObject(_package.ResolvePackageIndex(_export.ClassIndex), _package, (EObjectFlags) _export.ObjectFlags);
                 _object.Name = _export.ObjectName.Text;
-                if (!_export.OuterIndex.IsNull)
-                {
-                    Trace.Assert(_export.OuterIndex.IsExport, "Outer imports are not yet supported");
-                    _object.Outer = _package._exportLoaders[_export.OuterIndex.Index - 1]._object;
-                }
-                else
-                {
-                    _object.Outer = _package;
-                }
+                _object.Outer = _package.ResolvePackageIndex(_export.OuterIndex) as ResolvedExportObject;
+                _object.Outer ??= new ResolvedPackageObject(_package);
                 _object.Super = _package.ResolvePackageIndex(_export.SuperIndex) as ResolvedExportObject;
                 _object.Template = _package.ResolvePackageIndex(_export.TemplateIndex) as ResolvedExportObject;
                 _object.Flags |= (EObjectFlags) _export.ObjectFlags; // We give loaded objects the RF_WasLoaded flag in ConstructObject, so don't remove it again in here
