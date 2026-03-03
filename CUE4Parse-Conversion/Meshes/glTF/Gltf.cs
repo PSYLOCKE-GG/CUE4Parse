@@ -40,6 +40,9 @@ namespace CUE4Parse_Conversion.Meshes.glTF
         }
 
         public Gltf(string name, CSkelMeshLod lod, List<CSkelMeshBone> bones, List<MaterialExporter2>? materialExports, ExporterOptions options, FPackageIndex[]? morphTargets = null, int lodIndex = -1)
+            : this(name, lod, bones, materialExports, options, null, morphTargets, lodIndex) { }
+
+        public Gltf(string name, CSkelMeshLod lod, List<CSkelMeshBone> bones, List<MaterialExporter2>? materialExports, ExporterOptions options, Action<NodeBuilder[]>? onSkeletonReady, FPackageIndex[]? morphTargets = null, int lodIndex = -1)
         {
             var mesh = new MeshBuilder<VERTEX, VertexColorXTextureX, VertexJoints4>(name);
 
@@ -83,6 +86,7 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             var armatureNodeBuilder = new NodeBuilder(name+".ao");
 
             var armature = CreateGltfSkeleton(bones, armatureNodeBuilder);
+            onSkeletonReady?.Invoke(armature);
             sceneBuilder.AddSkinnedMesh(mesh, Matrix4x4.Identity, armature);
 
             Model = sceneBuilder.ToGltf2();
@@ -253,22 +257,16 @@ namespace CUE4Parse_Conversion.Meshes.glTF
         public static (VertexColorXTextureX, VertexColorXTextureX, VertexColorXTextureX) PrepareUVsAndTexCoords(
             CBaseMeshLod lod, CMeshVertex vert1, CMeshVertex vert2, CMeshVertex vert3, uint[] indices)
         {
-            // Always use white vertex colors — UE4 vertex colors encode AO/masks/tinting
-            // that don't map to glTF's baseColor * vertexColor multiply model
-            var colors = new FColor[lod.NumVerts];
-            Array.Fill(colors, new FColor(255, 255, 255, 255));
-            return PrepareUVsAndTexCoords(colors, vert1, vert2, vert3,
-                lod.ExtraUV.Value, indices);
+            return PrepareUVsAndTexCoords(vert1, vert2, vert3, lod.ExtraUV.Value, indices);
         }
 
         public static (VertexColorXTextureX, VertexColorXTextureX, VertexColorXTextureX) PrepareUVsAndTexCoords(
-            FColor[] colors, CMeshVertex vert1, CMeshVertex vert2, CMeshVertex vert3, FMeshUVFloat[][] uvs, uint[] indices)
+            CMeshVertex vert1, CMeshVertex vert2, CMeshVertex vert3, FMeshUVFloat[][] uvs, uint[] indices)
         {
             var (uvs1, uvs2, uvs3) = PrepareUVs(vert1, vert2, vert3, uvs, indices);
-            // FColor's implicit Vector4 cast already normalizes 0-255 → 0.0-1.0
-            var c1 = new VertexColorXTextureX((Vector4)colors[indices[0]], uvs1);
-            var c2 = new VertexColorXTextureX((Vector4)colors[indices[1]], uvs2);
-            var c3 = new VertexColorXTextureX((Vector4)colors[indices[2]], uvs3);
+            var c1 = new VertexColorXTextureX(Vector4.One, uvs1);
+            var c2 = new VertexColorXTextureX(Vector4.One, uvs2);
+            var c3 = new VertexColorXTextureX(Vector4.One, uvs3);
             return (c1, c2, c3);
         }
 
@@ -313,7 +311,11 @@ namespace CUE4Parse_Conversion.Meshes.glTF
 
         public static Vector4 SwapYZAndNormalize(Vector4 vec)
         {
-          return Vector4.Normalize(new Vector4(vec.X, vec.Z, vec.Y, vec.W));
+            // Normalize XYZ only — W is the binormal sign (±1) and must not be included
+            // in the normalization. The Y↔Z swap is a reflection (det=-1) that flips
+            // handedness, so negate W to keep the tangent frame consistent.
+            var xyz = Vector3.Normalize(new Vector3(vec.X, vec.Z, vec.Y));
+            return new Vector4(xyz.X, xyz.Y, xyz.Z, -vec.W);
         }
     }
 }
