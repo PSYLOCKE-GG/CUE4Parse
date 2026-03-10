@@ -426,7 +426,8 @@ public static class MeshConverter
                         {
                             sections[j] = new CMeshSection(materialIndex, srcLod.Sections[j],
                                 originalMesh.SkeletalMaterials[materialIndex].MaterialSlotName.Text,
-                                originalMesh.SkeletalMaterials[materialIndex].Material);
+                                originalMesh.SkeletalMaterials[materialIndex].Material,
+                                originalMesh.SkeletalMaterials[materialIndex].MaterialIndex);
                         }
                     }
 

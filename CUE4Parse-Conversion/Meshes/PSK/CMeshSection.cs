@@ -1,6 +1,7 @@
 ﻿using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
+using CUE4Parse.UE4.Objects.UObject;
 
 namespace CUE4Parse_Conversion.Meshes.PSK
 {
@@ -9,6 +10,7 @@ namespace CUE4Parse_Conversion.Meshes.PSK
         public readonly int MaterialIndex;
         public readonly string? MaterialName;
         public readonly ResolvedObject? Material; // UMaterialInterface
+        public readonly FPackageIndex? MaterialRef; // preserved import reference for retry
         public readonly bool CastShadow;
         public int FirstIndex;
         public int NumFaces;
@@ -38,11 +40,12 @@ namespace CUE4Parse_Conversion.Meshes.PSK
             Material = material;
         }
 
-        public CMeshSection(int index, FSkelMeshSection section, string? materialName, ResolvedObject? material) : this(section)
+        public CMeshSection(int index, FSkelMeshSection section, string? materialName, ResolvedObject? material, FPackageIndex? materialRef = null) : this(section)
         {
             MaterialIndex = index;
             MaterialName = materialName;
             Material = material;
+            MaterialRef = materialRef;
         }
 
         public CMeshSection(int index, int firstIndex, int numFaces, string? materialName, ResolvedObject? material)

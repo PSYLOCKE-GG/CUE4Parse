@@ -11,6 +11,7 @@ namespace CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 [JsonConverter(typeof(FSkeletalMaterialConverter))]
 public class FSkeletalMaterial
 {
+    public FPackageIndex MaterialIndex; // raw import/export reference
     public ResolvedObject? Material; // UMaterialInterface
     public FName MaterialSlotName;
     public FName? ImportedMaterialSlotName;
@@ -19,7 +20,8 @@ public class FSkeletalMaterial
 
     public FSkeletalMaterial(FAssetArchive Ar)
     {
-        Material = new FPackageIndex(Ar).ResolvedObject;
+        MaterialIndex = new FPackageIndex(Ar);
+        Material = MaterialIndex.ResolvedObject;
         if (FEditorObjectVersion.Get(Ar) >= FEditorObjectVersion.Type.RefactorMeshEditorMaterials)
         {
             MaterialSlotName = Ar.ReadFName();
