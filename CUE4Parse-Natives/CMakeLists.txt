@@ -12,6 +12,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     )
 endif()
 
+# Suppress packed-member alignment warning in Oodle (GCC 13+)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-Wno-address-of-packed-member)
+endif()
+
 if (EXISTS "${PROJECT_SOURCE_DIR}/ACL/external/acl/includes")
     set(WITH_ACL 1)
 endif()
