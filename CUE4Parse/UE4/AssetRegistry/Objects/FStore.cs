@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.UE4.Versions;
 
 namespace CUE4Parse.UE4.AssetRegistry.Objects
 {
@@ -26,10 +27,12 @@ namespace CUE4Parse.UE4.AssetRegistry.Objects
         public readonly string[] Texts;
 
         public readonly FNameEntrySerialized[] NameMap;
+        private readonly bool _isUtf8;
 
         public FStore(FAssetRegistryReader Ar)
         {
             NameMap = Ar.NameMap;
+            _isUtf8 = Ar.Header.Version >= FAssetRegistryVersionType.MarshalledTextAsUTF8String;
             var magic = Ar.Read<uint>();
             var order = GetLoadOrder(magic);
             var nums = Ar.ReadArray<int>(11);
@@ -53,7 +56,7 @@ namespace CUE4Parse.UE4.AssetRegistry.Objects
             AnsiStringOffsets = Ar.ReadArray(nums[5], Ar.Read<uint>);
             WideStringOffsets = Ar.ReadArray(nums[6], Ar.Read<uint>);
             AnsiStrings = Ar.ReadBytes(nums[7]);
-            WideStrings = Ar.ReadBytes(nums[8] * 2);
+            WideStrings = _isUtf8 ? Ar.ReadBytes(nums[8]) : Ar.ReadBytes(nums[8] * 2);
 
             NumberlessPairs = Ar.ReadArray(nums[9], () => new FNumberlessPair(Ar));
             Pairs = Ar.ReadArray(nums[10], () => new FNumberedPair(Ar));
@@ -73,6 +76,11 @@ namespace CUE4Parse.UE4.AssetRegistry.Objects
         {
             var offset = WideStringOffsets[index];
             var length = 0;
+            if (_isUtf8)
+            {
+                while (WideStrings[offset + length] != 0) ++length;
+                return Encoding.UTF8.GetString(WideStrings, (int)offset, length);
+            }
             while (WideStrings[offset + length] != 0 && WideStrings[offset + length + 1] != 0) length += 2;
             return Encoding.Unicode.GetString(WideStrings, (int)offset, length);
         }
