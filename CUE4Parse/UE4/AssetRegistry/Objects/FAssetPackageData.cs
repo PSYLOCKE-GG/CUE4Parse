@@ -42,8 +42,8 @@ namespace CUE4Parse.UE4.AssetRegistry.Objects
             }
             if (Ar.Header.Version >= FAssetRegistryVersionType.AddedChunkHashes)
             {
-                // TMap<FIoChunkId, FIoHash> ChunkHashes;
-                Ar.Position += Ar.Read<int>() * (12 + 20) + 4;
+                var chunkHashCount = Ar.Read<int>();
+                Ar.Position += chunkHashCount * (12 + 20);
             }
             if (Ar.Header.Version >= FAssetRegistryVersionType.WorkspaceDomain)
             {
@@ -59,7 +59,6 @@ namespace CUE4Parse.UE4.AssetRegistry.Objects
 
                 FileVersionLicenseeUE = Ar.Read<int>();
                 Flags = Ar.Read<uint>();
-                if (Ar.Game is EGame.GAME_MarvelRivals) Ar.Position += 4;
                 CustomVersions = new FCustomVersionContainer(Ar);
             }
             if (Ar.Header.Version >= FAssetRegistryVersionType.PackageImportedClasses)
@@ -69,6 +68,10 @@ namespace CUE4Parse.UE4.AssetRegistry.Objects
             if (Ar.Header.Version >= FAssetRegistryVersionType.AssetPackageDataHasExtension)
             {
                 ExtensionText = Ar.ReadFString();
+            }
+            if (Ar.Header.Version >= FAssetRegistryVersionType.AssetPackageDataHasPackageLocation)
+            {
+                Ar.Position += 1;
             }
         }
     }
