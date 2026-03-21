@@ -116,7 +116,7 @@ public class FStaticMeshRenderData
                             _ = new FDistanceFieldVolumeData(Ar);
                         }
                     }
-                    if (Ar.Game is EGame.GAME_TheFinals)
+                    if (Ar.Game is EGame.GAME_TheFinals or EGame.GAME_ArcRaiders)
                         _ = Ar.ReadArray(() => new FDistanceFieldVolumeData5(Ar));
                 }
             }
@@ -175,12 +175,8 @@ public class FStaticMeshRenderData
         ScreenSize = new float[screenSizeLength];
         for (var i = 0; i < ScreenSize.Length; ++i)
         {
-            if (Ar.Game >= EGame.GAME_UE4_20) // FPerPlatformProperty
-            {
-                var bFloatCooked = Ar.ReadBoolean();
-            }
-
-            ScreenSize[i] = Ar.Read<float>();
+            var screenSize = new FPerPlatformFloat(Ar);
+            ScreenSize[i] = screenSize.Value;
 
             if (Ar.Game == EGame.GAME_HogwartsLegacy) Ar.Position += 8;
             if (Ar.Game == EGame.GAME_VisionsofMana) Ar.Position += 4;
