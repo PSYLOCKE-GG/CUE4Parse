@@ -30,12 +30,19 @@ namespace CUE4Parse.UE4.Objects.RenderCore
 
         public FPackedNormal(FVector vector)
         {
-            Data = (uint) ((int) (vector.X + 1 * 127.5) + (int) (vector.Y + 1 * 127.5) << 8 + (int) (vector.Z + 1 * 127.5) << 16);
+            var x = (int)(vector.X * 127.5f + 127.5f) & 0xFF;
+            var y = (int)(vector.Y * 127.5f + 127.5f) & 0xFF;
+            var z = (int)(vector.Z * 127.5f + 127.5f) & 0xFF;
+            Data = (uint)(x | (y << 8) | (z << 16));
         }
 
-        public FPackedNormal(FVector4 vector)// is this broken?
+        public FPackedNormal(FVector4 vector)
         {
-            Data = (uint) ((int) (vector.X + 1 * 127.5) + (int) (vector.Y + 1 * 127.5) << 8 + (int) (vector.Z + 1 * 127.5) << 16 + (int) (vector.W + 1 * 127.5) << 24);
+            var x = (int)(vector.X * 127.5f + 127.5f) & 0xFF;
+            var y = (int)(vector.Y * 127.5f + 127.5f) & 0xFF;
+            var z = (int)(vector.Z * 127.5f + 127.5f) & 0xFF;
+            var w = (int)(vector.W * 127.5f + 127.5f) & 0xFF;
+            Data = (uint)(x | (y << 8) | (z << 16) | (w << 24));
         }
 
         public void SetW(float value)
