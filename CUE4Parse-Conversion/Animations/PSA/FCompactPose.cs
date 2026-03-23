@@ -22,9 +22,8 @@ namespace CUE4Parse_Conversion.Animations.PSA
 
         public void PushTransformAtFrame(List<CAnimTrack> dstTracks, int frame)
         {
-            Debug.Assert(dstTracks.Count == Bones.Length);
-
-            for (int index = 0; index < Bones.Length; ++index)
+            var count = Math.Min(Bones.Length, dstTracks.Count);
+            for (int index = 0; index < count; ++index)
             {
                 if (!Bones[index].IsValidKey) continue;
 

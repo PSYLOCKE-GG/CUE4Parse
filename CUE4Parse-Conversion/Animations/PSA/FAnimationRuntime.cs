@@ -35,6 +35,9 @@ namespace CUE4Parse_Conversion.Animations.PSA
                 poses[frameIndex] = new FCompactPose(skeleton.BoneCount);
                 for (var boneIndex = 0; boneIndex < poses[frameIndex].Bones.Length; boneIndex++)
                 {
+                    if (boneIndex >= sequence.Tracks.Count)
+                        break;
+
                     var boneInfo = skeleton.ReferenceSkeleton.FinalRefBoneInfo[boneIndex];
                     var originalTransform = skeleton.ReferenceSkeleton.FinalRefBonePose[boneIndex];
                     var track = sequence.Tracks[boneIndex];
@@ -118,6 +121,9 @@ namespace CUE4Parse_Conversion.Animations.PSA
                 poses[frameIndex] = new FCompactPose(skeleton.BoneCount);
                 for (var boneIndex = 0; boneIndex < poses[frameIndex].Bones.Length; boneIndex++)
                 {
+                    if (boneIndex >= sequence.Tracks.Count)
+                        break;
+
                     var boneInfo = skeleton.ReferenceSkeleton.FinalRefBoneInfo[boneIndex];
                     var track = sequence.Tracks[boneIndex];
 
@@ -144,7 +150,8 @@ namespace CUE4Parse_Conversion.Animations.PSA
             if (weight < 0.999989986419678)
                 throw new NotImplementedException();
 
-            for (int index = 0; index < basePose.Bones.Length; index++)
+            var count = Math.Min(basePose.Bones.Length, additivePose.Bones.Length);
+            for (int index = 0; index < count; index++)
             {
                 basePose.Bones[index].AccumulateWithAdditiveScale(additivePose.Bones[index].Transform, weight);
             }

@@ -260,7 +260,11 @@ namespace CUE4Parse.UE4.Objects.Core.Math
             return v + (W * t) + FVector.CrossProduct(q, t);
         }
 
-        public FQuat Inverse() => IsNormalized ? new FQuat(-X, -Y, -Z, W) : GetNormalized().Inverse();
+        public FQuat Inverse()
+        {
+            var q = IsNormalized ? this : GetNormalized();
+            return new FQuat(-q.X, -q.Y, -q.Z, q.W);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Conjugate() // public FQuat Inverse()

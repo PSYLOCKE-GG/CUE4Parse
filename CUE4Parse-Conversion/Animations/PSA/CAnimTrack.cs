@@ -31,8 +31,8 @@ namespace CUE4Parse_Conversion.Animations.PSA
         // DstPos and/or DstQuat will not be changed when KeyPos and/or KeyQuat are empty.
         public void GetBoneTransform(float frame, int frameCount, ref FQuat dstQuat, ref FVector dstPos, ref FVector dstScale)
         {
-            // fast case: 1 frame only
-            if (KeyTime.Length == 1 || frameCount == 1 || frame == 0.0f)
+            // fast case: 1 frame only, or degenerate animation
+            if (KeyTime.Length <= 1 || frameCount <= 1 || frame == 0.0f)
             {
                 if (KeyQuat.Length > 0) dstQuat = KeyQuat[0];
                 if (KeyPos.Length > 0) dstPos = KeyPos[0];
@@ -75,18 +75,31 @@ namespace CUE4Parse_Conversion.Animations.PSA
                 GetKeyParams(KeyScaleTime, frame, frameCount, scaKeysCount, out scaX, out scaY, out scaF);
             }
 
-            if (rotF > 0.0f) dstQuat = FQuat.Slerp(KeyQuat[rotX], KeyQuat[rotY], rotF);
-            else if (rotKeysCount > 0) dstQuat = KeyQuat[rotX];
-
-            if (posF > 0.0f) dstPos = MathUtils.Lerp(KeyPos[posX], KeyPos[posY], posF);
-            else if (posKeysCount > 0) dstPos = KeyPos[posX];
-
-            if (scaF > 0.0f) dstScale = MathUtils.Lerp(KeyScale[scaX], KeyScale[scaY], scaF);
-            else if (scaKeysCount > 0) dstScale = KeyScale[scaX];
+            SampleKeys(KeyQuat, rotKeysCount, rotX, rotY, rotF, ref dstQuat);
+            SampleKeys(KeyPos, posKeysCount, posX, posY, posF, ref dstPos);
+            SampleKeys(KeyScale, scaKeysCount, scaX, scaY, scaF, ref dstScale);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool HasKeys() => KeyQuat.Length + KeyPos.Length + KeyScale.Length > 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SampleKeys(FQuat[] keys, int count, int x, int y, float f, ref FQuat dst)
+        {
+            if (count <= 0) return;
+            x = Math.Clamp(x, 0, count - 1);
+            if (f > 0.0f) dst = FQuat.Slerp(keys[x], keys[Math.Clamp(y, 0, count - 1)], f);
+            else dst = keys[x];
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SampleKeys(FVector[] keys, int count, int x, int y, float f, ref FVector dst)
+        {
+            if (count <= 0) return;
+            x = Math.Clamp(x, 0, count - 1);
+            if (f > 0.0f) dst = MathUtils.Lerp(keys[x], keys[Math.Clamp(y, 0, count - 1)], f);
+            else dst = keys[x];
+        }
 
         // In:  KeyTime, Frame, NumFrames, Loop
         // Out: X - previous key index, Y - next key index, F - fraction between keys
