@@ -9,27 +9,8 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }} (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: ubuntu-latest
-            arch: x86_64
-          - os: linux
-            runner: ubuntu-latest
-            arch: aarch64
-          - os: macos
-            runner: macos-15-intel
-            arch: x86_64
-          - os: macos
-            runner: macos-latest
-            arch: arm64
-          - os: windows
-            runner: windows-latest
-            arch: x86_64
+    name: Build
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -42,157 +23,20 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Install native dependencies (Linux)
-        if: matrix.os == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            cmake \
-            build-essential \
-            libvorbis-dev \
-            libmpg123-dev \
-            libavcodec-dev \
-            libavformat-dev \
-            libavutil-dev \
-            libswresample-dev \
-            libspeex-dev
-
-      - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.os == 'linux' && matrix.arch == 'aarch64'
-        run: |
-          sudo apt-get install -y \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
-
-      - name: Install native dependencies (macOS)
-        if: matrix.os == 'macos'
-        run: |
-          brew install \
-            cmake \
-            libvorbis \
-            mpg123 \
-            ffmpeg \
-            speex
-
-      - name: Setup MSVC (Windows)
-        if: matrix.os == 'windows'
+      - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Restore dependencies
         run: dotnet restore CUE4Parse.sln /p:Platform="Any CPU"
 
-      - name: Build (Linux ARM64 cross-compile)
-        if: matrix.os == 'linux' && matrix.arch == 'aarch64'
-        run: |
-          # Set cross-compilation environment
-          export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc
-          export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
-          dotnet build CUE4Parse.sln --configuration Release --no-restore /p:Platform="Any CPU"
-
       - name: Build
-        if: ${{ !(matrix.os == 'linux' && matrix.arch == 'aarch64') }}
         run: dotnet build CUE4Parse.sln --configuration Release --no-restore /p:Platform="Any CPU"
 
       - name: Pack NuGet packages
-        if: matrix.os == 'windows' && matrix.arch == 'x86_64'
         run: dotnet pack CUE4Parse.sln --configuration Release --no-build --output ./artifacts /p:Platform="Any CPU"
 
       - name: Upload NuGet packages
-        if: matrix.os == 'windows' && matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4
         with:
           name: nuget-packages
           path: ./artifacts/*.nupkg
-
-      - name: Collect native binaries (Windows)
-        if: matrix.os == 'windows'
-        run: |
-          mkdir -p artifacts/natives
-          if (Test-Path "CUE4Parse-Natives/bin/Release/CUE4Parse-Natives.dll") {
-            Copy-Item "CUE4Parse-Natives/bin/Release/CUE4Parse-Natives.dll" "artifacts/natives/"
-            Copy-Item "CUE4Parse-Natives/bin/Release/CUE4Parse-Natives.pdb" "artifacts/natives/" -ErrorAction SilentlyContinue
-          }
-        shell: pwsh
-
-      - name: Collect native binaries (Unix)
-        if: matrix.os != 'windows'
-        run: |
-          mkdir -p artifacts/natives
-          # Check builddir (the build directory used by the csproj)
-          if [ -f "CUE4Parse-Natives/builddir/CUE4Parse-Natives.dylib" ]; then
-            cp "CUE4Parse-Natives/builddir/CUE4Parse-Natives.dylib" artifacts/natives/
-          fi
-          if [ -f "CUE4Parse-Natives/builddir/CUE4Parse-Natives.so" ]; then
-            cp "CUE4Parse-Natives/builddir/CUE4Parse-Natives.so" artifacts/natives/
-          fi
-          if [ -f "CUE4Parse-Natives/builddir/libCUE4Parse-Natives.so" ]; then
-            cp "CUE4Parse-Natives/builddir/libCUE4Parse-Natives.so" artifacts/natives/
-          fi
-
-      - name: Upload native binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: natives-${{ matrix.os }}-${{ matrix.arch }}
-          path: artifacts/natives/*
-          if-no-files-found: warn
-
-  create-release-package:
-    name: Create Release Package
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-
-    steps:
-      - name: Download all native artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: natives-*
-          path: natives
-
-      - name: Organize binaries for distribution
-        run: |
-          mkdir -p release/runtimes/win-x64/native
-          mkdir -p release/runtimes/linux-x64/native
-          mkdir -p release/runtimes/linux-arm64/native
-          mkdir -p release/runtimes/osx-x64/native
-          mkdir -p release/runtimes/osx-arm64/native
-
-          # Windows x64
-          if [ -f natives/natives-windows-x86_64/CUE4Parse-Natives.dll ]; then
-            cp natives/natives-windows-x86_64/CUE4Parse-Natives.dll release/runtimes/win-x64/native/
-          fi
-
-          # Linux x64
-          if [ -f natives/natives-linux-x86_64/CUE4Parse-Natives.so ]; then
-            cp natives/natives-linux-x86_64/CUE4Parse-Natives.so release/runtimes/linux-x64/native/
-          fi
-          if [ -f natives/natives-linux-x86_64/libCUE4Parse-Natives.so ]; then
-            cp natives/natives-linux-x86_64/libCUE4Parse-Natives.so release/runtimes/linux-x64/native/
-          fi
-
-          # Linux ARM64
-          if [ -f natives/natives-linux-aarch64/CUE4Parse-Natives.so ]; then
-            cp natives/natives-linux-aarch64/CUE4Parse-Natives.so release/runtimes/linux-arm64/native/
-          fi
-          if [ -f natives/natives-linux-aarch64/libCUE4Parse-Natives.so ]; then
-            cp natives/natives-linux-aarch64/libCUE4Parse-Natives.so release/runtimes/linux-arm64/native/
-          fi
-
-          # macOS x64
-          if [ -f natives/natives-macos-x86_64/CUE4Parse-Natives.dylib ]; then
-            cp natives/natives-macos-x86_64/CUE4Parse-Natives.dylib release/runtimes/osx-x64/native/
-          fi
-
-          # macOS ARM64
-          if [ -f natives/natives-macos-arm64/CUE4Parse-Natives.dylib ]; then
-            cp natives/natives-macos-arm64/CUE4Parse-Natives.dylib release/runtimes/osx-arm64/native/
-          fi
-
-          # Show what we have
-          find release -type f
-
-      - name: Upload release package
-        uses: actions/upload-artifact@v4
-        with:
-          name: CUE4Parse-natives-all-platforms
-          path: release/**/*
