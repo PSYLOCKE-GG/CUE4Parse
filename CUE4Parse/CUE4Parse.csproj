@@ -29,6 +29,8 @@
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageReference Include="FixedMathSharp" Version="2.1.0" />
     <PackageReference Include="Fmod5Sharp" Version="3.1.0" />
+    <!-- Patched version for Fmod5Sharp -->
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="9.0.14" />
     <PackageReference Include="GenericReader" Version="2.3.0" />
     <PackageReference Include="Infrablack.UE4Config" Version="0.7.2.97" />
     <PackageReference Include="ProDotNetZip" Version="1.20.0" />
