@@ -11,7 +11,7 @@ using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Readers;
 using CUE4Parse.Utils;
-
+using Ionic.Crc;
 using Newtonsoft.Json;
 
 using Serilog;

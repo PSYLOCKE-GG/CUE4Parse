@@ -42,6 +42,7 @@ if (WITH_Oodle)
         add_compile_definitions(OODLE_BUILDING_DLL)
         add_compile_definitions(WITH_Oodle)
         add_subdirectory("${PROJECT_SOURCE_DIR}/Oodle/")
+        target_compile_options(oodle2 PRIVATE -w)  # suppress all warnings
 endif()
 
 # VgmStream
