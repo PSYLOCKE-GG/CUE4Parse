@@ -116,7 +116,11 @@ namespace CUE4Parse.FileProvider.Vfs
                 // only load the normal package in this dict for later use by IoPackage.ImportedPackages
                 if (file is FIoStoreEntry { IsUePackage: true } ioEntry && !file.NameWithoutExtension.EndsWith(".o"))
                 {
-                    _byId[ioEntry.ChunkId.AsPackageId()] = file;
+                    var packageId = ioEntry.ChunkId.AsPackageId();
+                    _byId.AddOrUpdate(packageId, file, (_, existing) =>
+                        existing is VfsEntry existingVfs && file is VfsEntry newVfs
+                            && existingVfs.Vfs.ReadOrder >= newVfs.Vfs.ReadOrder
+                            ? existing : file);
                 }
             }
             _indicesBag.Add(new KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>(readOrder, newFiles));
