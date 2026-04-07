@@ -300,6 +300,12 @@ public class FPakEntry : VfsEntry
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override FArchive CreateReader(FByteBulkDataHeader? header = null) => new FByteArchive(Path, Read(header), Vfs.Versions);
 
+    /// <summary>
+    /// Create a streaming reader that reads from the pak on demand via partial extraction.
+    /// Use this for large entries (multi-GB) that can't fit in a single byte array.
+    /// </summary>
+    public FStreamArchive CreateStreamingReader() => new(Path, new PakEntryStream(this), Vfs.Versions);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public FPakEntry(PakFileReader reader, string path, FArchive Ar, EGame game) : base(reader, path)
     {
