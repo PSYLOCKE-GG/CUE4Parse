@@ -219,6 +219,38 @@ public partial class IoStoreReader : AbstractAesVfsReader
         throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStore {Name}");
     }
 
+    internal byte[] DecompressBlock(int blockIndex)
+    {
+        ref var compressionBlock = ref TocResource.CompressionBlocks[blockIndex];
+
+        var rawSize = compressionBlock.CompressedSize.Align(Aes.ALIGN);
+        var compressedBuffer = new byte[rawSize];
+
+        var partitionIndex = (int) ((ulong) compressionBlock.Offset / TocResource.Header.PartitionSize);
+        var partitionOffset = (long) ((ulong) compressionBlock.Offset % TocResource.Header.PartitionSize);
+        FArchive reader;
+        if (IsConcurrent)
+        {
+            reader = (FArchive) ContainerStreams[partitionIndex].Clone();
+        }
+        else reader = ContainerStreams[partitionIndex];
+
+        reader.ReadAt(partitionOffset, compressedBuffer, 0, (int) rawSize);
+        compressedBuffer = DecryptIfEncrypted(compressedBuffer, 0, (int) rawSize, IsEncrypted, Game == EGame.GAME_FragPunk && Path.Contains("global", StringComparison.Ordinal));
+
+        if (compressionBlock.CompressionMethodIndex == 0)
+        {
+            return compressedBuffer;
+        }
+
+        var uncompressedSize = (int) compressionBlock.UncompressedSize;
+        var uncompressedBuffer = new byte[uncompressedSize];
+        var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+        Compression.Compression.Decompress(compressedBuffer, 0, (int) compressionBlock.CompressedSize, uncompressedBuffer, 0,
+            uncompressedSize, compressionMethod, reader);
+        return uncompressedBuffer;
+    }
+
     private byte[] Read(long offset, long length, long offsetInFile = 0L)
     {
         switch (Game)

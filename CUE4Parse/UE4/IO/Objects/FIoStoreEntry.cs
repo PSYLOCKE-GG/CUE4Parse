@@ -3,6 +3,7 @@ using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.VirtualFileSystem;
+using CUE4Parse.UE4.IO;
 
 namespace CUE4Parse.UE4.IO.Objects
 {
@@ -51,5 +52,8 @@ namespace CUE4Parse.UE4.IO.Objects
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override FArchive CreateReader(FByteBulkDataHeader? header = null) => new FByteArchive(Path, Read(header), Vfs.Versions);
+
+        public FStreamArchive CreateStreamingReader()
+            => new(Path, new IoStoreEntryStream(this), Vfs.Versions);
     }
 }

@@ -85,16 +85,8 @@ namespace CUE4Parse.UE4.Objects.UObject
             {
                 var header = headers[i];
                 var length = (int) header.Length;
-                if (header.IsUtf16)
-                {
-                    entries[i] = new FNameEntrySerialized(new string(Ar.ReadArray<char>(length)));
-                }
-                else
-                {
-                    Span<byte> buf = length <= 512 ? stackalloc byte[length] : new byte[length];
-                    Ar.Read(buf);
-                    entries[i] = new FNameEntrySerialized(Encoding.UTF8.GetString(buf));
-                }
+                var s = header.IsUtf16 ? new string(Ar.ReadArray<char>(length)) : Encoding.UTF8.GetString(Ar.ReadBytes(length));
+                entries[i] = new FNameEntrySerialized(s);
             }
 
             return entries;
