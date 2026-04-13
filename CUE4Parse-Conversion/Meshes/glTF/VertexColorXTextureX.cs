@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Numerics;
+using CUE4Parse.UE4.Objects.Meshes;
 using SharpGLTF.Geometry.VertexTypes;
 using SharpGLTF.Schema2;
 
@@ -36,6 +37,22 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             TexCoord5 = texCoords[5];
             TexCoord6 = texCoords[6];
             TexCoord7 = texCoords[7];
+        }
+
+        /// <summary>
+        /// Constructs from a primary UV and extra UV layers without allocating a List.
+        /// </summary>
+        public VertexColorXTextureX(Vector4 color, Vector2 primaryUv, FMeshUVFloat[][] extraUvs, uint vertIndex)
+        {
+            Color = color;
+            TexCoord0 = primaryUv;
+            TexCoord1 = extraUvs.Length > 0 ? (Vector2)extraUvs[0][vertIndex] : default;
+            TexCoord2 = extraUvs.Length > 1 ? (Vector2)extraUvs[1][vertIndex] : default;
+            TexCoord3 = extraUvs.Length > 2 ? (Vector2)extraUvs[2][vertIndex] : default;
+            TexCoord4 = extraUvs.Length > 3 ? (Vector2)extraUvs[3][vertIndex] : default;
+            TexCoord5 = extraUvs.Length > 4 ? (Vector2)extraUvs[4][vertIndex] : default;
+            TexCoord6 = extraUvs.Length > 5 ? (Vector2)extraUvs[5][vertIndex] : default;
+            TexCoord7 = extraUvs.Length > 6 ? (Vector2)extraUvs[6][vertIndex] : default;
         }
 
         void IVertexMaterial.SetColor(int setIndex, Vector4 color)

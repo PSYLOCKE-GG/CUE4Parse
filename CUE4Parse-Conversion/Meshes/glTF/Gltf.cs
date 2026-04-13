@@ -179,21 +179,31 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             mat.Name = materialName;
 
             var prim = mesh.UsePrimitive(mat);
+            var indices = lod.Indices.Value;
+            var verts = lod.Verts;
+            var extraUvs = lod.ExtraUV.Value;
+            var firstIndex = sect.FirstIndex;
+
             for (int j = 0; j < sect.NumFaces; j++)
             {
-                var wedgeIndex = new uint[3];
-                for (var k = 0; k < wedgeIndex.Length; k++)
-                {
-                    wedgeIndex[k] = lod.Indices.Value[sect.FirstIndex + j * 3 + k];
-                }
+                var baseIdx = firstIndex + j * 3;
+                var idx0 = indices[baseIdx];
+                var idx1 = indices[baseIdx + 1];
+                var idx2 = indices[baseIdx + 2];
 
-                var vert1 = lod.Verts[wedgeIndex[0]];
-                var vert2 = lod.Verts[wedgeIndex[1]];
-                var vert3 = lod.Verts[wedgeIndex[2]];
+                var vert1 = verts[idx0];
+                var vert2 = verts[idx1];
+                var vert3 = verts[idx2];
 
                 var (v1, v2, v3) = PrepareTris(vert1, vert2, vert3);
-                var (c1, c2, c3) = PrepareUVsAndTexCoords(lod, vert1, vert2, vert3, wedgeIndex);
-                var (jv1, jv2, jv3) = PrepareVertexJoints(vert1, vert2, vert3);
+
+                var c1 = new VertexColorXTextureX(Vector4.One, (Vector2)vert1.UV, extraUvs, idx0);
+                var c2 = new VertexColorXTextureX(Vector4.One, (Vector2)vert2.UV, extraUvs, idx1);
+                var c3 = new VertexColorXTextureX(Vector4.One, (Vector2)vert3.UV, extraUvs, idx2);
+
+                var jv1 = PrepareVertexJoint(vert1);
+                var jv2 = PrepareVertexJoint(vert2);
+                var jv3 = PrepareVertexJoint(vert3);
 
                 prim.AddTriangle((v1, c1, jv1), (v2, c2, jv2), (v3, c3, jv3));
             }
@@ -214,20 +224,27 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             mat.Name = materialName;
 
             var prim = mesh.UsePrimitive(mat);
+            var indices = lod.Indices.Value;
+            var verts = lod.Verts;
+            var extraUvs = lod.ExtraUV.Value;
+            var firstIndex = sect.FirstIndex;
+
             for (int j = 0; j < sect.NumFaces; j++)
             {
-                var wedgeIndex = new uint[3];
-                for (var k = 0; k < wedgeIndex.Length; k++)
-                {
-                    wedgeIndex[k] = lod.Indices.Value[sect.FirstIndex + j * 3 + k];
-                }
+                var baseIdx = firstIndex + j * 3;
+                var idx0 = indices[baseIdx];
+                var idx1 = indices[baseIdx + 1];
+                var idx2 = indices[baseIdx + 2];
 
-                var vert1 = lod.Verts[wedgeIndex[0]];
-                var vert2 = lod.Verts[wedgeIndex[1]];
-                var vert3 = lod.Verts[wedgeIndex[2]];
+                var vert1 = verts[idx0];
+                var vert2 = verts[idx1];
+                var vert3 = verts[idx2];
 
                 var (v1, v2, v3) = PrepareTris(vert1, vert2, vert3);
-                var (c1, c2, c3) = PrepareUVsAndTexCoords(lod, vert1, vert2, vert3, wedgeIndex);
+
+                var c1 = new VertexColorXTextureX(Vector4.One, (Vector2)vert1.UV, extraUvs, idx0);
+                var c2 = new VertexColorXTextureX(Vector4.One, (Vector2)vert2.UV, extraUvs, idx1);
+                var c3 = new VertexColorXTextureX(Vector4.One, (Vector2)vert3.UV, extraUvs, idx2);
 
                 prim.AddTriangle((v1, c1), (v2, c2), (v3, c3));
             }
@@ -235,23 +252,14 @@ namespace CUE4Parse_Conversion.Meshes.glTF
 
         public static VertexJoints4 PrepareVertexJoint(CSkelMeshVertex vert)
         {
-            var bindings = new List<(int, float)>();
-
-            foreach (var influence in vert.Influences)
+            var influences = vert.Influences;
+            var bindings = new (int, float)[influences.Count];
+            for (var i = 0; i < influences.Count; i++)
             {
-                bindings.Add((influence.Bone, influence.Weight));
+                var inf = influences[i];
+                bindings[i] = (inf.Bone, inf.Weight);
             }
-
-            return new VertexJoints4(bindings.ToArray());
-        }
-
-        public static (VertexJoints4, VertexJoints4, VertexJoints4) PrepareVertexJoints(CSkelMeshVertex vert1, CSkelMeshVertex vert2, CSkelMeshVertex vert3)
-        {
-            var jv1 = PrepareVertexJoint(vert1);
-            var jv2 = PrepareVertexJoint(vert2);
-            var jv3 = PrepareVertexJoint(vert3);
-
-            return (jv1, jv2, jv3);
+            return new VertexJoints4(bindings);
         }
 
         public static (VertexColorXTextureX, VertexColorXTextureX, VertexColorXTextureX) PrepareUVsAndTexCoords(
