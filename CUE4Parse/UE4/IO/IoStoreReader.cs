@@ -219,12 +219,19 @@ public partial class IoStoreReader : AbstractAesVfsReader
         throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStore {Name}");
     }
 
+    [ThreadStatic] private static byte[]? _tlsCompressedBuffer;
+
     internal byte[] DecompressBlock(int blockIndex)
     {
         ref var compressionBlock = ref TocResource.CompressionBlocks[blockIndex];
 
-        var rawSize = compressionBlock.CompressedSize.Align(Aes.ALIGN);
-        var compressedBuffer = new byte[rawSize];
+        var rawSize = (int) compressionBlock.CompressedSize.Align(Aes.ALIGN);
+        var compressedBuffer = _tlsCompressedBuffer;
+        if (compressedBuffer == null || compressedBuffer.Length < rawSize)
+        {
+            compressedBuffer = new byte[rawSize];
+            _tlsCompressedBuffer = compressedBuffer;
+        }
 
         var partitionIndex = (int) ((ulong) compressionBlock.Offset / TocResource.Header.PartitionSize);
         var partitionOffset = (long) ((ulong) compressionBlock.Offset % TocResource.Header.PartitionSize);
@@ -235,18 +242,20 @@ public partial class IoStoreReader : AbstractAesVfsReader
         }
         else reader = ContainerStreams[partitionIndex];
 
-        reader.ReadAt(partitionOffset, compressedBuffer, 0, (int) rawSize);
-        compressedBuffer = DecryptIfEncrypted(compressedBuffer, 0, (int) rawSize, IsEncrypted, Game == EGame.GAME_FragPunk && Path.Contains("global", StringComparison.Ordinal));
+        reader.ReadAt(partitionOffset, compressedBuffer, 0, rawSize);
+        var decrypted = DecryptIfEncrypted(compressedBuffer, 0, rawSize, IsEncrypted, Game == EGame.GAME_FragPunk && Path.Contains("global", StringComparison.Ordinal));
 
         if (compressionBlock.CompressionMethodIndex == 0)
         {
-            return compressedBuffer;
+            var result = new byte[compressionBlock.UncompressedSize];
+            Buffer.BlockCopy(decrypted, 0, result, 0, (int) compressionBlock.UncompressedSize);
+            return result;
         }
 
         var uncompressedSize = (int) compressionBlock.UncompressedSize;
         var uncompressedBuffer = new byte[uncompressedSize];
         var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
-        Compression.Compression.Decompress(compressedBuffer, 0, (int) compressionBlock.CompressedSize, uncompressedBuffer, 0,
+        Compression.Compression.Decompress(decrypted, 0, (int) compressionBlock.CompressedSize, uncompressedBuffer, 0,
             uncompressedSize, compressionMethod, reader);
         return uncompressedBuffer;
     }

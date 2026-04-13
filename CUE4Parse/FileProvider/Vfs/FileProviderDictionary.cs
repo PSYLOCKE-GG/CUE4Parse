@@ -66,45 +66,42 @@ namespace CUE4Parse.FileProvider.Vfs
             ubulks = uptnls = _emptyGameFileList;
             if (!file.IsUePackage) return;
 
-            var ubulkList = new List<GameFile>();
-            var uptnlList = new List<GameFile>();
+            List<GameFile>? ubulkList = null;
+            List<GameFile>? uptnlList = null;
 
             var path = file.PathWithoutExtension;
             if (cookedIndexLookup && file is FIoStoreEntry { IsUePackage: true } entry)
             {
-                // dedicated to FBulkDataCookedIndex payloads but should work fine for anything coming from IoStore
-                // hitting IoStore Files like that is quite slow, but it's the only way to get the correct payloads
-                foreach (var payload in entry.IoStoreReader.Files.Values.Where(x => x.IsUePackagePayload && x is FIoStoreEntry y && y.ChunkId.ChunkId == entry.ChunkId.ChunkId))
+                foreach (var payload in entry.IoStoreReader.Files.Values)
                 {
+                    if (!payload.IsUePackagePayload || payload is not FIoStoreEntry y || y.ChunkId.ChunkId != entry.ChunkId.ChunkId)
+                        continue;
                     switch (payload.Extension)
                     {
                         case "ubulk":
-                            ubulkList.Add(payload);
+                            (ubulkList ??= new List<GameFile>()).Add(payload);
                             break;
                         case "uptnl":
-                            uptnlList.Add(payload);
+                            (uptnlList ??= new List<GameFile>()).Add(payload);
                             break;
                     }
                 }
             }
             else if (file is VfsEntry {Vfs: { } vfs})
             {
-                // file comes from a specific archive
-                // this ensure that its payloads are also from the same archive
-                // this is useful with patched archives
                 vfs.Files.TryGetValue(path + ".uexp", out uexp);
                 if (vfs.Files.TryGetValue(path + ".ubulk", out var ubulkVfs))
-                    ubulkList.Add(ubulkVfs);
+                    (ubulkList ??= new List<GameFile>()).Add(ubulkVfs);
             }
 
             if (uexp == null) TryGetValue(path + ".uexp", out uexp);
-            if (ubulkList.Count < 1 && TryGetValue(path + ".ubulk", out var ubulk))
-                ubulkList.Add(ubulk);
-            if (uptnlList.Count < 1 && TryGetValue(path + ".uptnl", out var uptnl))
-                uptnlList.Add(uptnl);
+            if (ubulkList == null && TryGetValue(path + ".ubulk", out var ubulk))
+                (ubulkList ??= new List<GameFile>()).Add(ubulk);
+            if (uptnlList == null && TryGetValue(path + ".uptnl", out var uptnl))
+                (uptnlList ??= new List<GameFile>()).Add(uptnl);
 
-            ubulks = ubulkList.AsReadOnly();
-            uptnls = uptnlList.AsReadOnly();
+            if (ubulkList != null) ubulks = ubulkList;
+            if (uptnlList != null) uptnls = uptnlList;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
