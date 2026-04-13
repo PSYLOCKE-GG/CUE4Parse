@@ -24,7 +24,7 @@ namespace CUE4Parse.UE4.Objects.UObject
         {
             var bHasNameHashes = Ar.Ver >= EUnrealEngineObjectUE4Version.NAME_HASHES_SERIALIZED || Ar.Game is EGame.GAME_GearsOfWar4 or EGame.GAME_DaysGone;
 
-            Name = Ar.ReadFString().Trim();
+            var rawName = Ar.ReadFString().Trim();
 
             if (Ar.Game == EGame.GAME_PlayerUnknownsBattlegrounds)
             {
@@ -36,8 +36,10 @@ namespace CUE4Parse.UE4.Objects.UObject
                     _pubgNameMap = JsonConvert.DeserializeObject<Dictionary<string, string>>(reader.ReadToEnd()) ?? new Dictionary<string, string>();
                 }
 
-                if (Name != null && _pubgNameMap.TryGetValue(Name, out var name)) Name = name;
+                if (rawName != null && _pubgNameMap.TryGetValue(rawName, out var mapped)) rawName = mapped;
             }
+
+            Name = rawName != null ? string.Intern(rawName) : null;
 
             if (bHasNameHashes)
             {
@@ -52,7 +54,7 @@ namespace CUE4Parse.UE4.Objects.UObject
 
         public FNameEntrySerialized(string? name)
         {
-            Name = name;
+            Name = name != null ? string.Intern(name) : null;
         }
 
         public override string ToString() => Name ?? "None";
@@ -84,7 +86,7 @@ namespace CUE4Parse.UE4.Objects.UObject
                 var header = headers[i];
                 var length = (int) header.Length;
                 var s = header.IsUtf16 ? new string(Ar.ReadArray<char>(length)) : Encoding.UTF8.GetString(Ar.ReadBytes(length));
-                entries[i] = new FNameEntrySerialized(s);
+                entries[i] = new FNameEntrySerialized(string.Intern(s));
             }
 
             return entries;
@@ -103,7 +105,8 @@ namespace CUE4Parse.UE4.Objects.UObject
                     var utf16Length = length * 2;
                     var nameData = stackalloc byte[utf16Length];
                     Ar.Serialize(nameData, utf16Length);
-                    return new FNameEntrySerialized(new string((char*) nameData, 0, length));
+                    var str = new string((char*) nameData, 0, length);
+                    return new FNameEntrySerialized(string.Intern(str));
                 }
             }
 
@@ -111,7 +114,8 @@ namespace CUE4Parse.UE4.Objects.UObject
             {
                 var nameData = stackalloc byte[length];
                 Ar.Serialize(nameData, length);
-                return new FNameEntrySerialized(new string((sbyte*) nameData, 0, length));
+                var str = new string((sbyte*) nameData, 0, length);
+                return new FNameEntrySerialized(string.Intern(str));
             }
         }
     }

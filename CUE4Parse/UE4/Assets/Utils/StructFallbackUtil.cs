@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Linq.Expressions;
+using System.Reflection;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Objects;
 
@@ -11,6 +14,18 @@ namespace CUE4Parse.UE4.Assets.Utils
     {
         public static ObjectMapper? ObjectMapper = new DefaultObjectMapper();
 
+        private static readonly ConcurrentDictionary<Type, Func<FStructFallback, object>?> ConstructorCache = new();
+
+        private static Func<FStructFallback, object>? BuildConstructorDelegate(Type type)
+        {
+            var ctor = type.GetConstructor(new[] { typeof(FStructFallback) });
+            if (ctor == null) return null;
+            var param = Expression.Parameter(typeof(FStructFallback), "fallback");
+            var newExpr = Expression.New(ctor, param);
+            var cast = Expression.Convert(newExpr, typeof(object));
+            return Expression.Lambda<Func<FStructFallback, object>>(cast, param).Compile();
+        }
+
         public static object? MapToClass(this FStructFallback? fallback, Type type)
         {
             if (fallback == null)
@@ -18,19 +33,14 @@ namespace CUE4Parse.UE4.Assets.Utils
                 return null;
             }
 
-            object value;
-            var dataConstructor = type.GetConstructor(new[] { typeof(FStructFallback) });
-            if (dataConstructor != null)
+            var factory = ConstructorCache.GetOrAdd(type, static t => BuildConstructorDelegate(t));
+            if (factory != null)
             {
-                // Let the constructor with FStructFallback assign the data
-                value = dataConstructor.Invoke(new object[] { fallback });
+                return factory(fallback);
             }
-            else
-            {
-                // Or automatically map the values using reflection
-                value = Activator.CreateInstance(type);
-                ObjectMapper?.Map(fallback, value);
-            }
+
+            var value = Activator.CreateInstance(type);
+            ObjectMapper?.Map(fallback, value);
             return value;
         }
     }

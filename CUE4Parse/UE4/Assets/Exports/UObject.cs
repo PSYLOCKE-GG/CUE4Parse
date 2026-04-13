@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+
 using System.Runtime.CompilerServices;
 using System.Text;
 using CUE4Parse.MappingsProvider;
@@ -508,10 +508,18 @@ public static class PropertyUtil
 
     private static bool TryGet(this IPropertyHolder holder, string name, out FPropertyTag? tag, StringComparison comparisonType = StringComparison.Ordinal)
     {
-        foreach (var prop in holder.Properties.Where(prop => prop.Name.Text.Equals(name, comparisonType)))
+        var properties = holder.Properties;
+        for (var i = 0; i < properties.Count; i++)
         {
-            tag = prop;
-            return true;
+            var prop = properties[i];
+            var propName = prop.Name;
+            if (propName.Number == 0
+                ? propName.PlainText.Equals(name, comparisonType)
+                : propName.Text.Equals(name, comparisonType))
+            {
+                tag = prop;
+                return true;
+            }
         }
 
         if (SearchPropertyInTemplate && holder is UObject obj)

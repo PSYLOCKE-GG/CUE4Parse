@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using CUE4Parse.GameTypes.Borderlands4.Assets.Objects.Properties;
@@ -40,6 +41,14 @@ public abstract class FPropertyTagType<T> : FPropertyTagType
 public abstract class FPropertyTagType
 {
     public abstract object? GenericValue { get; }
+
+    private static readonly ConcurrentDictionary<Type, bool> StructFallbackCache = new();
+
+    private static bool HasStructFallbackAttribute(Type type)
+    {
+        return StructFallbackCache.GetOrAdd(type, static t => t.GetCustomAttribute<StructFallback>() != null);
+    }
+
     public object? GetValue(Type type)
     {
         var generic = GenericValue;
@@ -54,7 +63,7 @@ public abstract class FPropertyTagType
         {
             case FPropertyTagType<FScriptStruct> structProp when type.IsInstanceOfType(structProp.Value!.StructType):
                 return structProp.Value.StructType;
-            case FPropertyTagType<FScriptStruct> {Value.StructType: FStructFallback fallback} when type.GetCustomAttribute<StructFallback>() != null:
+            case FPropertyTagType<FScriptStruct> {Value.StructType: FStructFallback fallback} when HasStructFallbackAttribute(type):
                 return fallback.MapToClass(type);
             case FPropertyTagType<UScriptArray> arrayProp when type.IsArray:
                 return CreateArray(type, arrayProp.Value!.Properties);
