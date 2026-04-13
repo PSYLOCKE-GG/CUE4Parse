@@ -39,7 +39,7 @@ namespace CUE4Parse.UE4.Objects.UObject
                 if (rawName != null && _pubgNameMap.TryGetValue(rawName, out var mapped)) rawName = mapped;
             }
 
-            Name = rawName != null ? string.Intern(rawName) : null;
+            Name = rawName;
 
             if (bHasNameHashes)
             {
@@ -54,7 +54,7 @@ namespace CUE4Parse.UE4.Objects.UObject
 
         public FNameEntrySerialized(string? name)
         {
-            Name = name != null ? string.Intern(name) : null;
+            Name = name;
         }
 
         public override string ToString() => Name ?? "None";
@@ -85,8 +85,16 @@ namespace CUE4Parse.UE4.Objects.UObject
             {
                 var header = headers[i];
                 var length = (int) header.Length;
-                var s = header.IsUtf16 ? new string(Ar.ReadArray<char>(length)) : Encoding.UTF8.GetString(Ar.ReadBytes(length));
-                entries[i] = new FNameEntrySerialized(string.Intern(s));
+                if (header.IsUtf16)
+                {
+                    entries[i] = new FNameEntrySerialized(new string(Ar.ReadArray<char>(length)));
+                }
+                else
+                {
+                    Span<byte> buf = length <= 512 ? stackalloc byte[length] : new byte[length];
+                    Ar.Read(buf);
+                    entries[i] = new FNameEntrySerialized(Encoding.UTF8.GetString(buf));
+                }
             }
 
             return entries;
@@ -106,7 +114,7 @@ namespace CUE4Parse.UE4.Objects.UObject
                     var nameData = stackalloc byte[utf16Length];
                     Ar.Serialize(nameData, utf16Length);
                     var str = new string((char*) nameData, 0, length);
-                    return new FNameEntrySerialized(string.Intern(str));
+                    return new FNameEntrySerialized(str);
                 }
             }
 
@@ -115,7 +123,7 @@ namespace CUE4Parse.UE4.Objects.UObject
                 var nameData = stackalloc byte[length];
                 Ar.Serialize(nameData, length);
                 var str = new string((sbyte*) nameData, 0, length);
-                return new FNameEntrySerialized(string.Intern(str));
+                return new FNameEntrySerialized(str);
             }
         }
     }
