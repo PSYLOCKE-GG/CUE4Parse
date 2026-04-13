@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.UObject;
@@ -68,6 +69,9 @@ namespace CUE4Parse.UE4.IO.Objects
         public FFilePackageStoreEntry[] OptionalSegmentStoreEntries;
         public FPackageId[] OptionalSegmentPackageIds;
 
+        public Dictionary<FPackageId, int>? PackageIdIndex;
+        public Dictionary<FPackageId, int>? OptionalSegmentPackageIdIndex;
+
         public FNameEntrySerialized[]? ContainerNameMap; // RedirectsNameMap
         public FIoContainerHeaderLocalizedPackage[]? LocalizedPackages;
         public FIoContainerHeaderPackageRedirect[] PackageRedirects;
@@ -105,10 +109,12 @@ namespace CUE4Parse.UE4.IO.Objects
             }
 
             ReadPackageIdsAndEntries(Ar, out PackageIds, out StoreEntries);
+            PackageIdIndex = BuildIndex(PackageIds);
 
             if (Version >= EIoContainerHeaderVersion.OptionalSegmentPackages)
             {
                 ReadPackageIdsAndEntries(Ar, out OptionalSegmentPackageIds, out OptionalSegmentStoreEntries);
+                OptionalSegmentPackageIdIndex = BuildIndex(OptionalSegmentPackageIds);
             }
             if (Version >= EIoContainerHeaderVersion.Initial)
             {
@@ -127,6 +133,14 @@ namespace CUE4Parse.UE4.IO.Objects
             {
                 SoftPackageReferencesSerialInfo = new FIoContainerHeaderSerialInfo(Ar);
             }
+        }
+
+        private static Dictionary<FPackageId, int> BuildIndex(FPackageId[] packageIds)
+        {
+            var index = new Dictionary<FPackageId, int>(packageIds.Length);
+            for (var i = 0; i < packageIds.Length; i++)
+                index[packageIds[i]] = i;
+            return index;
         }
 
         private void ReadPackageIdsAndEntries(FArchive Ar, out FPackageId[] packageIds, out FFilePackageStoreEntry[] storeEntries)

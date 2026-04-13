@@ -11,7 +11,6 @@ public sealed class IoStoreEntryStream : Stream
     private readonly long _entryOffset;
     private readonly long _entrySize;
     private readonly long _compressionBlockSize;
-    private readonly int _firstBlockIndex;
 
     private byte[]? _cachedBlock;
     private int _cachedBlockIndex = -1;
@@ -23,7 +22,6 @@ public sealed class IoStoreEntryStream : Stream
         _entryOffset = entry.Offset;
         _entrySize = entry.Size;
         _compressionBlockSize = _reader.TocResource.Header.CompressionBlockSize;
-        _firstBlockIndex = (int) (_entryOffset / _compressionBlockSize);
     }
 
     public override bool CanRead => true;

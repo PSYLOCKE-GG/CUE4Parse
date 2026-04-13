@@ -291,17 +291,21 @@ public sealed class IoPackage : AbstractUePackage
         if (containerHeader != null)
         {
             var packageId = FPackageId.FromName(Name);
-            var storeEntryIdx = Array.IndexOf(containerHeader.PackageIds, packageId);
-            if (storeEntryIdx != -1)
+            if (containerHeader.PackageIdIndex != null && containerHeader.PackageIdIndex.TryGetValue(packageId, out var storeEntryIdx))
             {
                 storeEntry = containerHeader.StoreEntries[storeEntryIdx];
             }
+            else if (containerHeader.OptionalSegmentPackageIdIndex != null && containerHeader.OptionalSegmentPackageIdIndex.TryGetValue(packageId, out var optionalIdx))
+            {
+                storeEntry = containerHeader.OptionalSegmentStoreEntries[optionalIdx];
+            }
             else
             {
-                var optionalSegmentStoreEntryIdx = Array.IndexOf(containerHeader.OptionalSegmentPackageIds, packageId);
-                if (optionalSegmentStoreEntryIdx != -1)
+                // Fallback for pre-indexed headers
+                var idx = Array.IndexOf(containerHeader.PackageIds, packageId);
+                if (idx != -1)
                 {
-                    storeEntry = containerHeader.OptionalSegmentStoreEntries[optionalSegmentStoreEntryIdx];
+                    storeEntry = containerHeader.StoreEntries[idx];
                 }
                 else
                 {
