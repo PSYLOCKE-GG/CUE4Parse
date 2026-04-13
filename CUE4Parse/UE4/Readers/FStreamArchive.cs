@@ -14,6 +14,7 @@ namespace CUE4Parse.UE4.Readers;
 public class FStreamArchive : FArchive
 {
     private readonly Stream _baseStream;
+    public Stream BaseStream => _baseStream;
 
     public FStreamArchive(string name, Stream baseStream, VersionContainer? versions = null) : base(versions)
     {

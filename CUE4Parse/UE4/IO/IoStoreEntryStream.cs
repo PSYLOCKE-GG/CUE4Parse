@@ -24,6 +24,12 @@ public sealed class IoStoreEntryStream : Stream
         _compressionBlockSize = _reader.TocResource.Header.CompressionBlockSize;
     }
 
+    public void ReleaseCache()
+    {
+        _cachedBlock = null;
+        _cachedBlockIndex = -1;
+    }
+
     public override bool CanRead => true;
     public override bool CanSeek => true;
     public override bool CanWrite => false;

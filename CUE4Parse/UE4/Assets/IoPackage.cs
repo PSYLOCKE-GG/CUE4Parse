@@ -280,6 +280,9 @@ public sealed class IoPackage : AbstractUePackage
         }
 
         IsFullyLoaded = true;
+
+        if (uasset is FStreamArchive { BaseStream: IoStoreEntryStream ioStream })
+            ioStream.ReleaseCache();
     }
 
     private (FFilePackageStoreEntry? storeEntry, FPackageId[] importedPackageIds) GetStoreEntryAndImportedPackageIds(FIoContainerHeader? containerHeader, IVfsFileProvider? provider = null)
