@@ -14,13 +14,15 @@ public static class Aes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] Decrypt(this byte[] encrypted, FAesKey key)
     {
-        return Provider.CreateDecryptor(key.Key, null).TransformFinalBlock(encrypted, 0, encrypted.Length);
+        using var decryptor = Provider.CreateDecryptor(key.Key, null);
+        return decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] Decrypt(this byte[] encrypted, int beginOffset, int count, FAesKey key)
     {
-        return Provider.CreateDecryptor(key.Key, null).TransformFinalBlock(encrypted, beginOffset, count);
+        using var decryptor = Provider.CreateDecryptor(key.Key, null);
+        return decryptor.TransformFinalBlock(encrypted, beginOffset, count);
     }
 
     static Aes()

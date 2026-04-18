@@ -46,7 +46,11 @@ public static class RennsportAes
         // 1C AC 76 88 32 7D 56 4C A8 7E 23 11 4A 24 7D B1 4F 52 43 34 AC DF D0 EB B0 F3 91 5D D0 84 61 85
         var key = CUE4Parse.Encryption.Aes.Aes.Decrypt(tempkey, reader.AesKey);
 
-        if (!isIndex) return Provider.CreateDecryptor(key, iv0).TransformFinalBlock(bytes, beginOffset, count);
+        if (!isIndex)
+        {
+            using var decryptor = Provider.CreateDecryptor(key, iv0);
+            return decryptor.TransformFinalBlock(bytes, beginOffset, count);
+        }
 
         var output = new byte[count];
         byte[] iv = directoryIndex ? iv2 : iv1;
