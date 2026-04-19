@@ -1,4 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Readers;
@@ -52,6 +54,16 @@ namespace CUE4Parse.UE4.IO.Objects
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override FArchive CreateReader(FByteBulkDataHeader? header = null) => new FByteArchive(Path, Read(header), Vfs.Versions);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override Task<byte[]> ReadAsync(CancellationToken cancellationToken)
+            => IoStoreReader.ExtractAsync(this, null, cancellationToken);
+
+        public override async Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken)
+        {
+            var bytes = await ReadAsync(cancellationToken).ConfigureAwait(false);
+            return new FByteArchive(Path, bytes, Vfs.Versions);
+        }
 
         public FStreamArchive CreateStreamingReader()
             => new(Path, new IoStoreEntryStream(this), Vfs.Versions);

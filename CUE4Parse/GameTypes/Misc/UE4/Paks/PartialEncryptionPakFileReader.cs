@@ -3,6 +3,8 @@
 using System;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Pak.Objects;
@@ -173,6 +175,164 @@ public partial class PakFileReader
         if (size > limit)
         {
             var decrypted = reader.ReadBytesAt(pakEntry.Offset + pakEntry.StructSize + bytesToRead, (int) pakEntry.UncompressedSize - limit);
+            return encrypted.Concat(decrypted).ToArray();
+        }
+
+        return encrypted[..(int) pakEntry.UncompressedSize];
+    }
+
+    /// <summary>Async twin of <see cref="PartialEncryptCompressedExtract"/>.</summary>
+    private async Task<byte[]> PartialEncryptCompressedExtractAsync(FArchive reader, FPakEntry pakEntry, FByteBulkDataHeader? header, CancellationToken cancellationToken)
+    {
+        var limit = Game switch
+        {
+            EGame.GAME_MarvelRivals => CalculateEncryptedBytesCountForMarvelRivals(pakEntry),
+            EGame.GAME_OperationApocalypse or EGame.GAME_MindsEye => 0x1000,
+            EGame.GAME_WutheringWaves => CalculateEncryptedBytesCountForWutheringWaves(pakEntry),
+            _ => throw new ArgumentOutOfRangeException(nameof(reader.Game), "Unsupported game for partial encrypted pak entry extraction")
+        };
+
+        var uncompressedOff = 0;
+        var compressedBuffer = new byte[pakEntry.CompressionBlocks.Max(block => (int) block.Size.Align(pakEntry.IsEncrypted ? Aes.ALIGN : 1))];
+
+        if (header is { } bulk)
+        {
+            var uncompressedBuffer = new byte[pakEntry.CompressionBlockSize];
+            var offset = bulk.OffsetInFile;
+            var requestedSize = (int) bulk.SizeOnDisk;
+            var result = new byte[requestedSize];
+            var compressionBlockSize = (int) pakEntry.CompressionBlockSize;
+            var firstBlockIndex = offset / compressionBlockSize;
+            var lastBlockIndex = (offset + requestedSize - 1) / compressionBlockSize;
+            var lastBlock = pakEntry.CompressionBlocks.Length - 1;
+
+            for (var i = 0; i < firstBlockIndex; i++)
+            {
+                if (limit > 0)
+                {
+                    var blockSize = (int) pakEntry.CompressionBlocks[i].Size;
+                    limit -= blockSize.Align(pakEntry.IsEncrypted && limit >= blockSize ? Aes.ALIGN : 1);
+                }
+                else
+                    break;
+            }
+
+            if (limit <= 0) limit = 0;
+
+            offset -= firstBlockIndex * compressionBlockSize;
+            for (var i = firstBlockIndex; i <= lastBlockIndex; i++)
+            {
+                var block = pakEntry.CompressionBlocks[i];
+                var blockSize = (int) block.Size;
+                var srcSize = blockSize.Align(pakEntry.IsEncrypted && limit >= blockSize ? Aes.ALIGN : 1);
+
+                var bytesToRead = blockSize < limit && limit > 0 ? srcSize : limit;
+                (await ReadAndDecryptAtAsync(block.CompressedStart, bytesToRead, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false)).CopyTo(compressedBuffer, 0);
+
+                if (blockSize > limit)
+                {
+                    var diff = blockSize - limit;
+                    var tail = new byte[diff];
+                    await reader.ReadAtAsync(block.CompressedStart + bytesToRead, tail.AsMemory(0, diff), cancellationToken).ConfigureAwait(false);
+                    tail.CopyTo(compressedBuffer, limit);
+                    limit = srcSize;
+                }
+
+                var uncompressedSize = i == lastBlock ? (int) (pakEntry.UncompressedSize - lastBlock * compressionBlockSize) : compressionBlockSize;
+                Decompress(compressedBuffer, 0, blockSize, uncompressedBuffer, 0, uncompressedSize, pakEntry.CompressionMethod);
+
+                var copySize = Math.Min((int)(uncompressedSize - offset), requestedSize);
+
+                Buffer.BlockCopy(uncompressedBuffer, (int) offset, result, uncompressedOff, copySize);
+                uncompressedOff += copySize;
+                offset = 0;
+                requestedSize -= copySize;
+                limit -= srcSize;
+            }
+            return result;
+        }
+
+        var uncompressed = new byte[(int) pakEntry.UncompressedSize];
+        foreach (var block in pakEntry.CompressionBlocks)
+        {
+            var blockSize = (int) block.Size;
+            var srcSize = blockSize.Align(pakEntry.IsEncrypted ? Aes.ALIGN : 1);
+
+            var bytesToRead = blockSize < limit && limit > 0 ? srcSize : limit;
+            (await ReadAndDecryptAtAsync(block.CompressedStart, bytesToRead, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false)).CopyTo(compressedBuffer, 0);
+
+            if (blockSize > limit)
+            {
+                var diff = blockSize - limit;
+                var tail = new byte[diff];
+                await reader.ReadAtAsync(block.CompressedStart + bytesToRead, tail.AsMemory(0, diff), cancellationToken).ConfigureAwait(false);
+                tail.CopyTo(compressedBuffer, limit);
+                limit = srcSize;
+            }
+
+            var uncompressedSize = (int) Math.Min(pakEntry.CompressionBlockSize, pakEntry.UncompressedSize - uncompressedOff);
+
+            Decompress(compressedBuffer, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
+            uncompressedOff += (int) pakEntry.CompressionBlockSize;
+            limit -= srcSize;
+        }
+
+        return uncompressed;
+    }
+
+    /// <summary>Async twin of <see cref="PartialEncryptExtract"/>.</summary>
+    private async Task<byte[]> PartialEncryptExtractAsync(FArchive reader, FPakEntry pakEntry, FByteBulkDataHeader? header, CancellationToken cancellationToken)
+    {
+        var limit = Game switch
+        {
+            EGame.GAME_MarvelRivals => CalculateEncryptedBytesCountForMarvelRivals(pakEntry),
+            EGame.GAME_OperationApocalypse or EGame.GAME_MindsEye => 0x1000,
+            EGame.GAME_WutheringWaves => CalculateEncryptedBytesCountForWutheringWaves(pakEntry),
+            _ => throw new ArgumentOutOfRangeException(nameof(reader.Game), "Unsupported game for partial encrypted pak entry extraction")
+        };
+
+        var alignment = pakEntry.IsEncrypted ? Aes.ALIGN : 1;
+        int size = 0;
+
+        if (header is { } bulk)
+        {
+            var offset = bulk.OffsetInFile;
+            if (offset > limit)
+            {
+                var buf = new byte[(int) bulk.SizeOnDisk];
+                await reader.ReadAtAsync(pakEntry.Offset + pakEntry.StructSize + offset, buf.AsMemory(0, buf.Length), cancellationToken).ConfigureAwait(false);
+                return buf;
+            }
+            else
+            {
+                var readOffset = offset & ~((long) alignment - 1);
+                var dataOffset = offset - readOffset;
+                var readSize = (dataOffset + (int) bulk.SizeOnDisk).Align(alignment);
+                limit -= (int) readOffset;
+                var bytesToReadpart = readSize <= limit ? readSize : limit;
+                var encryptedpart = await ReadAndDecryptAtAsync(pakEntry.Offset + pakEntry.StructSize + readOffset, (int) bytesToReadpart, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+                encryptedpart = dataOffset == 0 ? encryptedpart : encryptedpart[(int) dataOffset..];
+                bytesToReadpart = (int) (bulk.SizeOnDisk - encryptedpart.Length);
+
+                if (bytesToReadpart > 0)
+                {
+                    var normalpart = new byte[bytesToReadpart];
+                    await reader.ReadAtAsync(pakEntry.Offset + pakEntry.StructSize + readOffset + limit, normalpart.AsMemory(0, (int) bytesToReadpart), cancellationToken).ConfigureAwait(false);
+                    return [.. encryptedpart, .. normalpart];
+                }
+
+                return encryptedpart[..(int) bulk.SizeOnDisk];
+            }
+        }
+
+        size = (int) pakEntry.UncompressedSize.Align(alignment);
+        var bytesToRead2 = size <= limit ? size : limit;
+        var encrypted = await ReadAndDecryptAtAsync(pakEntry.Offset + pakEntry.StructSize, bytesToRead2, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+
+        if (size > limit)
+        {
+            var decrypted = new byte[(int) pakEntry.UncompressedSize - limit];
+            await reader.ReadAtAsync(pakEntry.Offset + pakEntry.StructSize + bytesToRead2, decrypted.AsMemory(0, decrypted.Length), cancellationToken).ConfigureAwait(false);
             return encrypted.Concat(decrypted).ToArray();
         }
 

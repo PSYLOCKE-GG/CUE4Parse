@@ -538,10 +538,18 @@ namespace CUE4Parse.FileProvider
         public byte[] SaveAsset(GameFile file) => file.Read();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Task<byte[]> SaveAssetAsync(string path) => SaveAssetAsync(this[path]);
+        public Task<byte[]> SaveAssetAsync(string path) => SaveAssetAsync(this[path], CancellationToken.None);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<byte[]> SaveAssetAsync(GameFile file) => await file.ReadAsync().ConfigureAwait(false);
+        public Task<byte[]> SaveAssetAsync(GameFile file) => SaveAssetAsync(file, CancellationToken.None);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<byte[]> SaveAssetAsync(string path, CancellationToken cancellationToken)
+            => SaveAssetAsync(this[path], cancellationToken);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<byte[]> SaveAssetAsync(GameFile file, CancellationToken cancellationToken)
+            => file.ReadAsync(cancellationToken);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TrySaveAsset(string path, [MaybeNullWhen(false)] out byte[] data)
@@ -569,6 +577,10 @@ namespace CUE4Parse.FileProvider
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Task<FArchive> CreateReaderAsync(string path) => this[path].CreateReaderAsync();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<FArchive> CreateReaderAsync(string path, CancellationToken cancellationToken)
+            => this[path].CreateReaderAsync(cancellationToken);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryCreateReader(string path, [MaybeNullWhen(false)] out FArchive reader)
@@ -612,6 +624,14 @@ namespace CUE4Parse.FileProvider
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Task<IPackage> LoadPackageAsync(string path) => LoadPackageAsync(this[path]);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<IPackage> LoadPackageAsync(string path, CancellationToken cancellationToken)
+            => LoadPackageAsync(this[path], cancellationToken);
+
+        // Kept virtual with its original (no-CT) body so third-party subclasses that override
+        // LoadPackageAsync(GameFile) continue to dispatch as before. New callers should use the
+        // CT-taking overload below, which is independently virtual.
         public virtual async Task<IPackage> LoadPackageAsync(GameFile file)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
@@ -632,6 +652,37 @@ namespace CUE4Parse.FileProvider
                     return new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     var ioUasset = ioStoreEntry.CreateStreamingReader();
+                    return new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider);
+                default:
+                    throw new NotImplementedException($"type {file.GetType()} is not supported");
+            }
+        }
+
+        public virtual async Task<IPackage> LoadPackageAsync(GameFile file, CancellationToken cancellationToken)
+        {
+            if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
+            Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
+
+            // Lazy payload loaders are invoked later during property deserialization, well outside
+            // this method's scope. They intentionally do NOT capture `cancellationToken` — by the time
+            // they fire, the token may be long since cancelled or out of scope for unrelated reasons.
+            // Keeping them on sync SafeCreateReader matches existing behavior; making bulk-data lazy
+            // loading async is a separate project.
+            var lazyUbulk = ubulks.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => ubulks[0].SafeCreateReader(header)) : null;
+            var lazyUptnl = uptnls.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => uptnls[0].SafeCreateReader(header)) : null;
+
+            switch (file)
+            {
+                case FPakEntry pakEntry:
+                    var pakUasset = pakEntry.CreateStreamingReader(); // sync cursor — does not pre-read bytes
+                    var uexpAr = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
+                    return new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization);
+                case OsGameFile:
+                    var uasset = await file.CreateReaderAsync(cancellationToken).ConfigureAwait(false);
+                    var uexpArOs = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
+                    return new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization);
+                case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
+                    var ioUasset = ioStoreEntry.CreateStreamingReader(); // sync cursor
                     return new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
@@ -777,23 +828,35 @@ namespace CUE4Parse.FileProvider
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<UObject> LoadPackageObjectAsync(string path) => await LoadPackageObjectAsync<UObject>(path).ConfigureAwait(false);
+        public Task<UObject> LoadPackageObjectAsync(string path) => LoadPackageObjectAsync<UObject>(path, CancellationToken.None);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<T> LoadPackageObjectAsync<T>(string path) where T : UObject => await LoadPackageObjectAsync<T>(GetPathName(path)).ConfigureAwait(false);
+        public Task<UObject> LoadPackageObjectAsync(string path, CancellationToken cancellationToken) => LoadPackageObjectAsync<UObject>(path, cancellationToken);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<UObject> LoadPackageObjectAsync(string path, string objectName) => await LoadPackageObjectAsync<UObject>(path, objectName).ConfigureAwait(false);
+        public Task<T> LoadPackageObjectAsync<T>(string path) where T : UObject => LoadPackageObjectAsync<T>(GetPathName(path), CancellationToken.None);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<T> LoadPackageObjectAsync<T>(string path, string objectName) where T : UObject => await LoadPackageObjectAsync<T>((path, objectName)).ConfigureAwait(false);
+        public Task<T> LoadPackageObjectAsync<T>(string path, CancellationToken cancellationToken) where T : UObject => LoadPackageObjectAsync<T>(GetPathName(path), cancellationToken);
 
-        private async Task<T> LoadPackageObjectAsync<T>(ValueTuple<string, string> pathName) where T : UObject
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<UObject> LoadPackageObjectAsync(string path, string objectName) => LoadPackageObjectAsync<UObject>(path, objectName, CancellationToken.None);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<UObject> LoadPackageObjectAsync(string path, string objectName, CancellationToken cancellationToken) => LoadPackageObjectAsync<UObject>(path, objectName, cancellationToken);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<T> LoadPackageObjectAsync<T>(string path, string objectName) where T : UObject => LoadPackageObjectAsync<T>((path, objectName), CancellationToken.None);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<T> LoadPackageObjectAsync<T>(string path, string objectName, CancellationToken cancellationToken) where T : UObject => LoadPackageObjectAsync<T>((path, objectName), cancellationToken);
+
+        private async Task<T> LoadPackageObjectAsync<T>(ValueTuple<string, string> pathName, CancellationToken cancellationToken) where T : UObject
         {
             ArgumentException.ThrowIfNullOrEmpty("path", pathName.Item1);
             ArgumentException.ThrowIfNullOrEmpty("objectName", pathName.Item2);
 
-            var package = await LoadPackageAsync(pathName.Item1).ConfigureAwait(false);
+            var package = await LoadPackageAsync(pathName.Item1, cancellationToken).ConfigureAwait(false);
             return package.GetExport<T>(pathName.Item2, StringComparison);
         }
 
@@ -822,22 +885,34 @@ namespace CUE4Parse.FileProvider
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<UObject?> SafeLoadPackageObjectAsync(string path) => await SafeLoadPackageObjectAsync<UObject>(path).ConfigureAwait(false);
+        public Task<UObject?> SafeLoadPackageObjectAsync(string path) => SafeLoadPackageObjectAsync<UObject>(path, CancellationToken.None);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<T?> SafeLoadPackageObjectAsync<T>(string path) where T : UObject => await SafeLoadPackageObjectAsync<T>(GetPathName(path)).ConfigureAwait(false);
+        public Task<UObject?> SafeLoadPackageObjectAsync(string path, CancellationToken cancellationToken) => SafeLoadPackageObjectAsync<UObject>(path, cancellationToken);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<UObject?> SafeLoadPackageObjectAsync(string path, string objectName) => await SafeLoadPackageObjectAsync<UObject>(path, objectName).ConfigureAwait(false);
+        public Task<T?> SafeLoadPackageObjectAsync<T>(string path) where T : UObject => SafeLoadPackageObjectAsync<T>(GetPathName(path), CancellationToken.None);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<T?> SafeLoadPackageObjectAsync<T>(string path, string objectName) where T : UObject => await SafeLoadPackageObjectAsync<T>((path, objectName)).ConfigureAwait(false);
+        public Task<T?> SafeLoadPackageObjectAsync<T>(string path, CancellationToken cancellationToken) where T : UObject => SafeLoadPackageObjectAsync<T>(GetPathName(path), cancellationToken);
 
-        protected async Task<T?> SafeLoadPackageObjectAsync<T>(ValueTuple<string, string> pathName) where T : UObject
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<UObject?> SafeLoadPackageObjectAsync(string path, string objectName) => SafeLoadPackageObjectAsync<UObject>(path, objectName, CancellationToken.None);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<UObject?> SafeLoadPackageObjectAsync(string path, string objectName, CancellationToken cancellationToken) => SafeLoadPackageObjectAsync<UObject>(path, objectName, cancellationToken);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<T?> SafeLoadPackageObjectAsync<T>(string path, string objectName) where T : UObject => SafeLoadPackageObjectAsync<T>((path, objectName), CancellationToken.None);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<T?> SafeLoadPackageObjectAsync<T>(string path, string objectName, CancellationToken cancellationToken) where T : UObject => SafeLoadPackageObjectAsync<T>((path, objectName), cancellationToken);
+
+        protected async Task<T?> SafeLoadPackageObjectAsync<T>(ValueTuple<string, string> pathName, CancellationToken cancellationToken) where T : UObject
         {
             try
             {
-                return await LoadPackageObjectAsync<T>(pathName).ConfigureAwait(false);
+                return await LoadPackageObjectAsync<T>(pathName, cancellationToken).ConfigureAwait(false);
             }
             catch
             {

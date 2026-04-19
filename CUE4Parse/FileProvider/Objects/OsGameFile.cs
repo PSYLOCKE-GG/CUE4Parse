@@ -1,7 +1,10 @@
 ﻿using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 
 namespace CUE4Parse.FileProvider.Objects;
@@ -38,4 +41,13 @@ public class OsGameFile : VersionedGameFile
 
         return File.ReadAllBytes(ActualFile.FullName);
     }
+
+    public override Task<byte[]> ReadAsync(CancellationToken cancellationToken)
+        => File.ReadAllBytesAsync(ActualFile.FullName, cancellationToken);
+
+    // Match sync CreateReader shape: read bytes fully into memory, wrap in FByteArchive.
+    // An FStreamArchive would change Dispose semantics (closes the file) and streaming behavior —
+    // a silent divergence from sync would surprise consumers migrating to the async API.
+    public override async Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken)
+        => new FByteArchive(Path, await ReadAsync(cancellationToken).ConfigureAwait(false), Versions);
 }

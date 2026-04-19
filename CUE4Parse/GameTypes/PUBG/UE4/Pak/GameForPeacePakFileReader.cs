@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Pak.Objects;
@@ -42,6 +44,30 @@ public partial class PakFileReader
             // Calculate the uncompressed size,
             // its either just the compression block size,
             // or if it's the last block, it's the remaining data size
+            var uncompressedSize = (int) Math.Min(pakEntry.CompressionBlockSize, pakEntry.UncompressedSize - uncompressedOff);
+            Decompress(compressed, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
+            uncompressedOff += (int) pakEntry.CompressionBlockSize;
+        }
+        if (pakEntry.Extension == "ini" && BitConverter.ToUInt64(uncompressed, 0) == 0x4b4457585d5d5b7d)
+        {
+            for (var i = 0; i < uncompressed.Length; i++)
+            {
+                uncompressed[i] ^= GameForPeaceIniDecrypt[i % GameForPeaceIniDecrypt.Length];
+            }
+        }
+        return uncompressed;
+    }
+
+    /// <summary>Async twin of <see cref="GameForPeaceExtract"/>.</summary>
+    private async Task<byte[]> GameForPeaceExtractAsync(FArchive reader, FPakEntry pakEntry, CancellationToken cancellationToken)
+    {
+        var uncompressed = new byte[(int) pakEntry.UncompressedSize];
+        var uncompressedOff = 0;
+        foreach (var block in pakEntry.CompressionBlocks)
+        {
+            var blockSize = (int) block.Size;
+            var srcSize = blockSize.Align(pakEntry.IsEncrypted ? Aes.ALIGN : 1);
+            var compressed = await ReadAndDecryptAtAsync(block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
             var uncompressedSize = (int) Math.Min(pakEntry.CompressionBlockSize, pakEntry.UncompressedSize - uncompressedOff);
             Decompress(compressed, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
             uncompressedOff += (int) pakEntry.CompressionBlockSize;

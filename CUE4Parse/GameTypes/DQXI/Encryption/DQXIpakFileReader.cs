@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Pak.Objects;
 using CUE4Parse.UE4.Readers;
@@ -56,6 +58,32 @@ public partial class PakFileReader
 
         var size = (int) pakEntry.UncompressedSize;
         var data = ReadAndDecryptAt(pakEntry.Offset + pakEntry.StructSize, size, reader, pakEntry.IsEncrypted);
+        for (var i = 0; i < data.Length; i++) data[i] ^= 0xff;
+        return size != pakEntry.UncompressedSize ? data.SubByteArray((int) pakEntry.UncompressedSize) : data;
+    }
+
+    /// <summary>Async twin of <see cref="DQXIExtract"/>.</summary>
+    public async Task<byte[]> DQXIExtractAsync(FArchive reader, FPakEntry pakEntry, CancellationToken cancellationToken)
+    {
+        if (pakEntry.IsCompressed)
+        {
+            var uncompressed = new byte[(int) pakEntry.UncompressedSize];
+            var uncompressedOff = 0;
+            foreach (var block in pakEntry.CompressionBlocks)
+            {
+                var srcSize = (int) block.Size;
+                var compressed = await ReadAndDecryptAtAsync(block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+                for (var i = 0; i < compressed.Length; i++) compressed[i] ^= DQXIDecodeKey[i & 7];
+                var uncompressedSize = (int) Math.Min(pakEntry.CompressionBlockSize, pakEntry.UncompressedSize - uncompressedOff);
+                Decompress(compressed, 0, srcSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
+                uncompressedOff += (int) pakEntry.CompressionBlockSize;
+            }
+
+            return uncompressed;
+        }
+
+        var size = (int) pakEntry.UncompressedSize;
+        var data = await ReadAndDecryptAtAsync(pakEntry.Offset + pakEntry.StructSize, size, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
         for (var i = 0; i < data.Length; i++) data[i] ^= 0xff;
         return size != pakEntry.UncompressedSize ? data.SubByteArray((int) pakEntry.UncompressedSize) : data;
     }

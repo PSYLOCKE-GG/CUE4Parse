@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Readers;
@@ -51,6 +53,25 @@ namespace CUE4Parse.UE4.VirtualFileSystem
 
         public abstract void Mount(StringComparer pathComparer);
         public abstract byte[] Extract(VfsEntry entry, FByteBulkDataHeader? header = null);
+
+        /// <summary>
+        /// Async twin of <see cref="Extract"/>. Default implementation runs the sync path and
+        /// wraps the result in a completed task. Subclasses that have a genuine async read path
+        /// (<see cref="CUE4Parse.UE4.Pak.PakFileReader"/>, <see cref="CUE4Parse.UE4.IO.IoStoreReader"/>,
+        /// and their game-specific partials) override this to call <see cref="FArchive.ReadAtAsync(long, Memory{byte}, CancellationToken)"/>
+        /// on every compression block, interleaved with synchronous decrypt/decompress.
+        /// </summary>
+        /// <remarks>
+        /// If <see cref="IsConcurrent"/> is <c>false</c>, the caller is responsible for serializing
+        /// concurrent calls. When <c>IsConcurrent = true</c> (the default in
+        /// <see cref="CUE4Parse.FileProvider.Vfs.AbstractVfsFileProvider"/>), each override clones the
+        /// underlying archive per call and concurrent calls are safe.
+        /// </remarks>
+        public virtual Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(Extract(entry, header));
+        }
 
         protected void ValidateMountPoint(ref string mountPoint)
         {

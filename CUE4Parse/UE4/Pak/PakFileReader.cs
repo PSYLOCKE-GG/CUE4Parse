@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.HighPerformance.Buffers;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider.Objects;
@@ -74,6 +76,129 @@ namespace CUE4Parse.UE4.Pak
             : this(new FStreamArchive(filePath, stream, versions)) {}
         public PakFileReader(string filePath, RandomAccessStream stream, VersionContainer? versions = null)
             : this(new FRandomAccessStreamArchive(filePath, stream, versions)) {}
+
+        /// <summary>
+        /// Async twin of <see cref="Extract"/>. Uses <see cref="FArchive.ReadAtAsync(long, System.Memory{byte}, CancellationToken)"/>
+        /// on every compression block, interleaved with synchronous decrypt/decompress. Decrypt
+        /// (AES) and decompress (Oodle / Zlib / LZ4 / GZip) stay sync because they're CPU-bound.
+        /// </summary>
+        /// <remarks>
+        /// If <see cref="AbstractAesVfsReader.IsConcurrent"/> is <c>false</c>, the caller must
+        /// serialize concurrent calls. When <c>IsConcurrent = true</c> (the default in
+        /// <see cref="CUE4Parse.FileProvider.Vfs.AbstractVfsFileProvider"/>), each call clones the
+        /// underlying archive and concurrent calls are safe.
+        /// </remarks>
+        public override async Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, CancellationToken cancellationToken = default)
+        {
+            if (entry is not FPakEntry pakEntry || entry.Vfs != this) throw new ArgumentException($"Wrong pak file reader, required {entry.Vfs.Name}, this is {Name}");
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Clone for concurrent readers; dispose the clone in finally. FArchive implements
+            // IDisposable (not IAsyncDisposable) so sync Dispose in finally is correct.
+            var reader = IsConcurrent ? (FArchive) Ar.Clone() : Ar;
+            try
+            {
+                return await ExtractAsyncCore(reader, pakEntry, header, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (IsConcurrent) reader.Dispose();
+            }
+        }
+
+        private async Task<byte[]> ExtractAsyncCore(FArchive reader, FPakEntry pakEntry, FByteBulkDataHeader? header, CancellationToken cancellationToken)
+        {
+            var alignment = pakEntry.IsEncrypted ? Aes.ALIGN : 1;
+
+            long offset = 0;
+            var requestedSize = (int) pakEntry.UncompressedSize;
+            if (header is { } bulk)
+            {
+                offset = bulk.OffsetInFile;
+                requestedSize = (int) bulk.SizeOnDisk;
+            }
+
+            if (pakEntry.IsCompressed)
+            {
+                switch (Game)
+                {
+                    case EGame.GAME_MarvelRivals or EGame.GAME_OperationApocalypse or EGame.GAME_WutheringWaves or EGame.GAME_MindsEye:
+                        return await PartialEncryptCompressedExtractAsync(reader, pakEntry, header, cancellationToken).ConfigureAwait(false);
+                    case EGame.GAME_GameForPeace:
+                        return await GameForPeaceExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
+                    case EGame.GAME_Rennsport:
+                        return await RennsportCompressedExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
+                    case EGame.GAME_DragonQuestXI:
+                        return await DQXIExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
+                    case EGame.GAME_ArenaBreakoutInfinite when header is null || ABIDecryption.encryptedFiles.Contains(pakEntry.Extension, StringComparer.OrdinalIgnoreCase):
+                        return await ABIExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
+                }
+
+                var compressionBlockSize = (int) pakEntry.CompressionBlockSize;
+                var firstBlockIndex = offset / compressionBlockSize;
+                var lastBlockIndex = (offset + requestedSize - 1) / compressionBlockSize;
+
+                var numBlocks = lastBlockIndex - firstBlockIndex + 1;
+                var bufferSize = numBlocks * compressionBlockSize;
+                if (lastBlockIndex == (int) ((pakEntry.UncompressedSize - 1) / compressionBlockSize))
+                {
+                    var lastBlockInFileSize = (int) (pakEntry.UncompressedSize % compressionBlockSize);
+                    if (lastBlockInFileSize > 0)
+                        bufferSize -= compressionBlockSize - lastBlockInFileSize;
+                }
+
+                var uncompressed = new byte[bufferSize];
+                var uncompressedOff = 0;
+
+                var compressedBuffer = Array.Empty<byte>();
+                for (var blockIndex = firstBlockIndex; blockIndex <= lastBlockIndex; blockIndex++)
+                {
+                    var block = pakEntry.CompressionBlocks[blockIndex];
+                    var blockSize = (int) block.Size;
+                    var srcSize = blockSize.Align(alignment);
+                    if (srcSize > compressedBuffer.Length)
+                    {
+                        compressedBuffer = new byte[srcSize];
+                    }
+                    var compressed = await ReadAndDecryptAtAsync(compressedBuffer, block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+                    var uncompressedSize = (int) Math.Min(compressionBlockSize, pakEntry.UncompressedSize - blockIndex * compressionBlockSize);
+                    Decompress(compressed, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
+                    uncompressedOff += uncompressedSize;
+                }
+
+                var offsetInFirstBlock = offset - firstBlockIndex * compressionBlockSize;
+                if (offsetInFirstBlock == 0 && requestedSize == bufferSize)
+                    return uncompressed;
+
+                var result = new byte[requestedSize];
+                Array.Copy(uncompressed, offsetInFirstBlock, result, 0, requestedSize);
+                return result;
+            }
+
+            switch (Game)
+            {
+                case EGame.GAME_MarvelRivals or EGame.GAME_OperationApocalypse or EGame.GAME_WutheringWaves or EGame.GAME_MindsEye:
+                    return await PartialEncryptExtractAsync(reader, pakEntry, header, cancellationToken).ConfigureAwait(false);
+                case EGame.GAME_Rennsport:
+                    return await RennsportExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
+                case EGame.GAME_DragonQuestXI:
+                    return await DQXIExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
+                case EGame.GAME_ArenaBreakoutInfinite when header is null || ABIDecryption.encryptedFiles.Contains(pakEntry.Extension, StringComparer.OrdinalIgnoreCase):
+                    return await ABIExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
+            }
+
+            var readOffset = offset & ~((long) alignment - 1);
+            var dataOffset = offset - readOffset;
+            var readSize = (dataOffset + requestedSize).Align(alignment);
+            var data = await ReadAndDecryptAtAsync(pakEntry.Offset + pakEntry.StructSize + readOffset, (int) readSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+
+            if (dataOffset == 0 && requestedSize == data.Length)
+                return data;
+
+            var chunk = new byte[requestedSize];
+            Array.Copy(data, dataOffset, chunk, 0, requestedSize);
+            return chunk;
+        }
 
         public override byte[] Extract(VfsEntry entry, FByteBulkDataHeader? header = null)
         {

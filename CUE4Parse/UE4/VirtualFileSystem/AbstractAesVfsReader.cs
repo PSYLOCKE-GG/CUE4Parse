@@ -1,5 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.UE4.Exceptions;
@@ -121,4 +123,27 @@ public abstract partial class AbstractAesVfsReader : AbstractVfsReader, IAesVfsR
 
     protected byte[] ReadAndDecryptIndexAt(long position, int length, FArchive reader, bool isEncrypted) =>
         DecryptIfEncrypted(reader.ReadBytesAt(position, length), isEncrypted, true);
+
+    // Async twins of the ReadAndDecryptAt helpers. The IO read goes through FArchive.ReadAtAsync
+    // (real async on FRandomAccessFileStreamArchive, falls back to sync read wrapped in a completed
+    // task on other archive types). DecryptIfEncrypted stays synchronous — AES is CPU-bound.
+    protected async Task<byte[]> ReadAndDecryptAtAsync(long position, int length, FArchive reader, bool isEncrypted, CancellationToken cancellationToken)
+    {
+        var bytes = new byte[length];
+        await reader.ReadAtAsync(position, bytes.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
+        return DecryptIfEncrypted(bytes, isEncrypted);
+    }
+
+    protected async Task<byte[]> ReadAndDecryptAtAsync(byte[] buffer, long position, int length, FArchive reader, bool isEncrypted, CancellationToken cancellationToken)
+    {
+        await reader.ReadAtAsync(position, buffer.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
+        return DecryptIfEncrypted(buffer, isEncrypted);
+    }
+
+    protected async Task<byte[]> ReadAndDecryptIndexAtAsync(long position, int length, FArchive reader, bool isEncrypted, CancellationToken cancellationToken)
+    {
+        var bytes = new byte[length];
+        await reader.ReadAtAsync(position, bytes.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
+        return DecryptIfEncrypted(bytes, isEncrypted, true);
+    }
 }

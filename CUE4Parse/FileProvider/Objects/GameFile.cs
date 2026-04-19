@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
@@ -122,19 +123,53 @@ public abstract class GameFile
         return reader;
     }
 
-    // No ConfigureAwait(false) here since the context is needed handling exceptions
+    // Async entry points — the CT-taking virtuals are the real primitives. Subclasses with
+    // a genuine async path (FPakEntry, FIoStoreEntry, OsGameFile) override these. The
+    // parameterless overloads exist for API compatibility and forward with CancellationToken.None.
+
+    public virtual Task<byte[]> ReadAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Read());
+    }
+
+    public virtual Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(CreateReader());
+    }
+
+    public virtual async Task<byte[]?> SafeReadAsync(CancellationToken cancellationToken)
+    {
+        try { return await ReadAsync(cancellationToken).ConfigureAwait(false); }
+        catch (Exception e)
+        {
+            Log.Error(e, $"Could not read GameFile {this}");
+            return null;
+        }
+    }
+
+    public virtual async Task<FArchive?> SafeCreateReaderAsync(CancellationToken cancellationToken)
+    {
+        try { return await CreateReaderAsync(cancellationToken).ConfigureAwait(false); }
+        catch (Exception e)
+        {
+            Log.Error(e, $"Could not create reader for GameFile {this}");
+            return null;
+        }
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public async Task<byte[]> ReadAsync() => await Task.Run(() => Read());
+    public Task<byte[]> ReadAsync() => ReadAsync(CancellationToken.None);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public async Task<FArchive> CreateReaderAsync() => await Task.Run(() => CreateReader());
+    public Task<FArchive> CreateReaderAsync() => CreateReaderAsync(CancellationToken.None);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public async Task<byte[]?> SafeReadAsync() => await Task.Run(() => SafeRead());
+    public Task<byte[]?> SafeReadAsync() => SafeReadAsync(CancellationToken.None);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public async Task<FArchive?> SafeCreateReaderAsync() => await Task.Run(() => SafeCreateReader());
+    public Task<FArchive?> SafeCreateReaderAsync() => SafeCreateReaderAsync(CancellationToken.None);
 
     public override string ToString() => Path;
 
