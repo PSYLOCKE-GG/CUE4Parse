@@ -184,6 +184,7 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             var extraUvs = lod.ExtraUV.Value;
             var vertColors = lod.VertexColors;
             var firstIndex = sect.FirstIndex;
+            var numTexCoords = lod.NumTexCoords > 0 ? lod.NumTexCoords : extraUvs.Length + 1;
 
             for (int j = 0; j < sect.NumFaces; j++)
             {
@@ -202,9 +203,9 @@ namespace CUE4Parse_Conversion.Meshes.glTF
                 var col2 = vertColors is not null ? vertColors[idx1] : Vector4.One;
                 var col3 = vertColors is not null ? vertColors[idx2] : Vector4.One;
 
-                var c1 = new VertexColorXTextureX(col1, (Vector2)vert1.UV, extraUvs, idx0);
-                var c2 = new VertexColorXTextureX(col2, (Vector2)vert2.UV, extraUvs, idx1);
-                var c3 = new VertexColorXTextureX(col3, (Vector2)vert3.UV, extraUvs, idx2);
+                var c1 = new VertexColorXTextureX(col1, (Vector2)vert1.UV, extraUvs, idx0, numTexCoords);
+                var c2 = new VertexColorXTextureX(col2, (Vector2)vert2.UV, extraUvs, idx1, numTexCoords);
+                var c3 = new VertexColorXTextureX(col3, (Vector2)vert3.UV, extraUvs, idx2, numTexCoords);
 
                 var jv1 = PrepareVertexJoint(vert1);
                 var jv2 = PrepareVertexJoint(vert2);
@@ -234,6 +235,7 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             var extraUvs = lod.ExtraUV.Value;
             var vertColors = lod.VertexColors;
             var firstIndex = sect.FirstIndex;
+            var numTexCoords = lod.NumTexCoords > 0 ? lod.NumTexCoords : extraUvs.Length + 1;
 
             for (int j = 0; j < sect.NumFaces; j++)
             {
@@ -252,9 +254,9 @@ namespace CUE4Parse_Conversion.Meshes.glTF
                 var col2 = vertColors is not null ? vertColors[idx1] : Vector4.One;
                 var col3 = vertColors is not null ? vertColors[idx2] : Vector4.One;
 
-                var c1 = new VertexColorXTextureX(col1, (Vector2)vert1.UV, extraUvs, idx0);
-                var c2 = new VertexColorXTextureX(col2, (Vector2)vert2.UV, extraUvs, idx1);
-                var c3 = new VertexColorXTextureX(col3, (Vector2)vert3.UV, extraUvs, idx2);
+                var c1 = new VertexColorXTextureX(col1, (Vector2)vert1.UV, extraUvs, idx0, numTexCoords);
+                var c2 = new VertexColorXTextureX(col2, (Vector2)vert2.UV, extraUvs, idx1, numTexCoords);
+                var c3 = new VertexColorXTextureX(col3, (Vector2)vert3.UV, extraUvs, idx2, numTexCoords);
 
                 prim.AddTriangle((v1, c1), (v2, c2), (v3, c3));
             }
@@ -285,9 +287,10 @@ namespace CUE4Parse_Conversion.Meshes.glTF
             var col1 = colors is not null ? colors[indices[0]] : Vector4.One;
             var col2 = colors is not null ? colors[indices[1]] : Vector4.One;
             var col3 = colors is not null ? colors[indices[2]] : Vector4.One;
-            var c1 = new VertexColorXTextureX(col1, uvs1);
-            var c2 = new VertexColorXTextureX(col2, uvs2);
-            var c3 = new VertexColorXTextureX(col3, uvs3);
+            var numTexCoords = uvs.Length + 1;
+            var c1 = new VertexColorXTextureX(col1, uvs1, numTexCoords);
+            var c2 = new VertexColorXTextureX(col2, uvs2, numTexCoords);
+            var c3 = new VertexColorXTextureX(col3, uvs3, numTexCoords);
             return (c1, c2, c3);
         }
 
