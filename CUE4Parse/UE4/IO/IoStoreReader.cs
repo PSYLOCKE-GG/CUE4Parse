@@ -39,21 +39,21 @@ public partial class IoStoreReader : AbstractAesVfsReader
     public override FGuid EncryptionKeyGuid => TocResource.Header.EncryptionKeyGuid;
     public override bool IsEncrypted => TocResource.Header.ContainerFlags.HasFlag(EIoContainerFlags.Encrypted);
 
-    public IoStoreReader(string tocPath, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex, VersionContainer? versions = null)
+    public IoStoreReader(string tocPath, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FileInfo(tocPath), readOptions, versions) { }
-    public IoStoreReader(FileInfo utocFile, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex, VersionContainer? versions = null)
+    public IoStoreReader(FileInfo utocFile, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FByteArchive(utocFile.FullName, File.ReadAllBytes(utocFile.FullName), versions), it => new FStreamArchive(it, File.Open(it, FileMode.Open, FileAccess.Read, FileShare.ReadWrite), versions), readOptions) { }
-    public IoStoreReader(string tocPath, Stream tocStream, Stream casStream, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex, VersionContainer? versions = null)
+    public IoStoreReader(string tocPath, Stream tocStream, Stream casStream, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FStreamArchive(tocPath, tocStream, versions), it => new FStreamArchive(it, casStream, versions), readOptions) { }
-    public IoStoreReader(string tocPath, Stream tocStream, Func<string, FArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex, VersionContainer? versions = null)
+    public IoStoreReader(string tocPath, Stream tocStream, Func<string, FArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FStreamArchive(tocPath, tocStream, versions), openContainerStreamFunc, readOptions) { }
 
-    public IoStoreReader(string tocPath, RandomAccessStream tocStream, RandomAccessStream casStream, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex, VersionContainer? versions = null)
+    public IoStoreReader(string tocPath, RandomAccessStream tocStream, RandomAccessStream casStream, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FRandomAccessStreamArchive(tocPath, tocStream, versions), it => new FRandomAccessStreamArchive(it, casStream, versions), readOptions) { }
-    public IoStoreReader(string tocPath, RandomAccessStream tocStream, Func<string, FRandomAccessStreamArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex, VersionContainer? versions = null)
+    public IoStoreReader(string tocPath, RandomAccessStream tocStream, Func<string, FRandomAccessStreamArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FRandomAccessStreamArchive(tocPath, tocStream, versions), openContainerStreamFunc, readOptions) { }
 
-    public IoStoreReader(FArchive tocStream, Func<string, FArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex)
+    public IoStoreReader(FArchive tocStream, Func<string, FArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll)
         : base(tocStream.Name, tocStream.Versions)
     {
         Length = tocStream.Length;

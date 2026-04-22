@@ -1,8 +1,10 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.VirtualFileSystem;
 using CUE4Parse.UE4.IO;
@@ -24,6 +26,24 @@ namespace CUE4Parse.UE4.IO.Objects
 
         private readonly uint _tocEntryIndex;
         public FIoChunkId ChunkId => IoStoreReader.TocResource.ChunkIds[_tocEntryIndex];
+
+        /// <summary>
+        /// Per-entry chunk hash from the TOC's ChunkMetas array. Requires the IoStoreReader
+        /// to have been opened with <see cref="EIoStoreTocReadOptions.ReadTocMeta"/> (or
+        /// <see cref="EIoStoreTocReadOptions.ReadAll"/>); throws otherwise so callers see a
+        /// clear failure instead of a silent default.
+        /// </summary>
+        public FSHAHash ChunkHash
+        {
+            get
+            {
+                var metas = IoStoreReader.TocResource.ChunkMetas
+                    ?? throw new InvalidOperationException(
+                        "FIoStoreEntry.ChunkHash requires the TOC to be loaded with EIoStoreTocReadOptions.ReadTocMeta. "
+                        + "Construct the IoStoreReader with EIoStoreTocReadOptions.ReadAll.");
+                return metas[_tocEntryIndex].ChunkHash;
+            }
+        }
 
         public FIoStoreEntry(IoStoreReader reader, string path, uint tocEntryIndex) : base(reader, path)
         {

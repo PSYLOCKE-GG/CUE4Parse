@@ -28,6 +28,15 @@ public class FPakEntry : VfsEntry
     public override CompressionMethod CompressionMethod { get; }
     public readonly FPakCompressedBlock[] CompressionBlocks = [];
     public readonly uint Flags;
+
+    /// <summary>
+    /// Per-entry SHA-1 hash from the pak header. Populated by the FArchive- and
+    /// FMemoryImageArchive-based constructors. The bitfield-decoded constructor leaves
+    /// <see cref="FSHAHash.Hash"/> null because the encoded entry list omits the hash —
+    /// callers that consume <see cref="Hash"/> for cache fingerprints must handle
+    /// <c>Hash.Hash == null</c> by falling back to a content hash.
+    /// </summary>
+    public readonly FSHAHash Hash;
     public override bool IsEncrypted => (Flags & Flag_Encrypted) == Flag_Encrypted;
     public bool IsDeleted => (Flags & Flag_Deleted) == Flag_Deleted;
     public readonly uint CompressionBlockSize;
@@ -104,7 +113,7 @@ public class FPakEntry : VfsEntry
 
         if (reader.Info.Version < PakFile_Version_NoTimestamps)
             Ar.Position += 8; // Timestamp
-        Ar.Position += 20; // Hash
+        Hash = new FSHAHash(Ar);
 
         if (reader.Info.Version >= PakFile_Version_CompressionEncryption)
         {
@@ -267,7 +276,8 @@ public class FPakEntry : VfsEntry
         CompressedSize = Ar.Read<long>();
         UncompressedSize = Ar.Read<long>();
         Size = UncompressedSize;
-        Ar.Position += FSHAHash.SIZE + 4 /*align to 8 bytes*/; //Hash = new FSHAHash(Ar);
+        Hash = new FSHAHash(Ar);
+        Ar.Position += 4; // align to 8 bytes
         CompressionBlocks = Ar.ReadArray<FPakCompressedBlock>();
         CompressionBlockSize = Ar.Read<uint>();
         CompressionMethod = reader.Info.CompressionMethods[Ar.Read<int>()];
