@@ -10,6 +10,16 @@ namespace CUE4Parse.Utils
         private const ulong K1 = 0xb492b66fbe98f273;
         private const ulong K2 = 0x9ae16a3b2f90404f;
 
+        /// <summary>Seeded variant of <see cref="CityHash64(byte[])"/>. Matches the reference
+        /// implementation at https://github.com/google/cityhash — <c>CityHash64WithSeed(s, seed)
+        /// = HashLen16(CityHash64(s) - K2, seed)</c>. Required to reproduce UE5
+        /// <c>FHashedName</c> hashes, which use this variant with <c>FName.Number</c> as the seed.</summary>
+        public static ulong CityHash64WithSeed(byte[] buffer, ulong seed)
+        {
+            var baseHash = buffer == null || buffer.Length == 0 ? K2 : CityHash64(buffer);
+            return HashLen16(unchecked(baseHash - K2), seed);
+        }
+
         public static ulong CityHash64(byte[] buffer)
         {
             if (buffer == null || buffer.Length == 0)
