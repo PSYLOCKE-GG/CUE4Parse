@@ -48,7 +48,7 @@ public sealed class FHoKEntry : FPakEntry
         var requestedSize = (int) Size;
         if (header is { } bulk)
         {
-            if (bulk.BulkDataFlags.HasFlag(EBulkDataFlags.BULKDATA_WorkspaceDomainPayload) && Path.EndsWith("ubulk"))
+            if (bulk.BulkDataFlags.HasFlag(EBulkDataFlags.BULKDATA_WorkspaceDomainPayload) && Extension.Equals("ubulk", StringComparison.OrdinalIgnoreCase))
             {
                 var path = System.IO.Path.ChangeExtension(Path, ".g.ubulk");
                 if (Vfs is HoKdbFileReader reader && reader.Provider.TryGetGameFile(path, out var gbulk))
@@ -98,7 +98,7 @@ public sealed class FHoKEntry : FPakEntry
             }
 
             if (Extension is "lua")
-                _ = new NGRLuaReader(Path, uncompressed, out uncompressed);
+                uncompressed = NGRLuaReader.DecryptLua(Path, uncompressed);
 
             var offsetInFirstBlock = offset - firstBlockIndex * compressionBlockSize;
             if (offsetInFirstBlock == 0 && requestedSize == bufferSize)
@@ -121,7 +121,7 @@ public sealed class FHoKEntry : FPakEntry
         }
 
         if (Extension is "lua")
-            _ = new NGRLuaReader(Path, data, out data);
+            return NGRLuaReader.DecryptLua(Path, data);
 
         if (offset == 0 && requestedSize == data.Length)
             return data;
