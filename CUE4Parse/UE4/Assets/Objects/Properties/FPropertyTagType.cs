@@ -10,6 +10,7 @@ using CUE4Parse.GameTypes.OuterWorlds2.Readers;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Assets.Utils;
+using CUE4Parse.UE4.Objects.Core.i18N;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.Utils;
@@ -87,6 +88,8 @@ public abstract class FPropertyTagType
                 if (softObjProp.Value!.TryLoad(out var loadedObject))
                     return new ResolvedLoadedObject(loadedObject);
                 return null;
+            case FPropertyTagType<FText> textProp when type == typeof(string):
+                return textProp.Value?.Text;
             case EnumProperty enumProp when type.IsEnum:
                 var storedEnum = enumProp.Value.Text;
                 var search = storedEnum.SubstringAfter("::"); // Strip enum name on namespaced and enum class enums
@@ -94,7 +97,8 @@ public abstract class FPropertyTagType
                 var idx = Array.FindIndex(values, it => it == search);
                 return idx == -1 ? null : type.GetEnumValues().GetValue(idx);
             //TODO There are also Enums stored as ByteProperty but UModel uses them nowhere besides in UE2
-            //TODO Maybe Maps?
+            case FPropertyTagType<UScriptMap> mapProp when type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>):
+                return CreateDictionary(type, mapProp.Value!.Properties);
             default:
                 return null;
         }
@@ -107,6 +111,23 @@ public abstract class FPropertyTagType
         for (var i = 0; i < properties.Count; i++)
         {
             result.SetValue(properties[i].GetValue(contentType), i);
+        }
+        return result;
+    }
+
+    private IDictionary CreateDictionary(Type type, Dictionary<FPropertyTagType, FPropertyTagType?> properties)
+    {
+        var typeArgs = type.GetGenericArguments();
+        var keyType = typeArgs[0];
+        var valueType = typeArgs[1];
+        var dictType = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
+        var result = (IDictionary) Activator.CreateInstance(dictType, properties.Count)!;
+        foreach (var kv in properties)
+        {
+            var key = kv.Key.GetValue(keyType);
+            if (key == null) continue;
+            var value = kv.Value?.GetValue(valueType);
+            result[key] = value;
         }
         return result;
     }
