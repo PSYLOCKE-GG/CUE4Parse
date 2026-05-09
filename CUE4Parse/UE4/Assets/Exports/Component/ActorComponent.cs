@@ -27,6 +27,7 @@ public class UActorComponent : UObject
 
         if (Ar.Game is EGame.GAME_SuicideSquad) Ar.Position += 4;
         if (Ar.Game == EGame.GAME_WorldofJadeDynasty) Ar.Position += 16;
+        if (Ar.Game == EGame.GAME_MarvelRivals) return; // TODO: Figure out what this *really* is
 
         if (FFortniteReleaseBranchCustomObjectVersion.Get(Ar) >= FFortniteReleaseBranchCustomObjectVersion.Type.ActorComponentUCSModifiedPropertiesSparseStorage)
         {
