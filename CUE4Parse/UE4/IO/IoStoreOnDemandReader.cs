@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Exceptions;
@@ -71,7 +73,7 @@ namespace CUE4Parse.UE4.IO
 
         private byte[] Read(string hash, long offset, long length)
         {
-            var reader = _downloader.Download($"{ChunkToc.Header.ChunksDirectory}/chunks/{hash[..2]}/{hash}.iochunk").GetAwaiter().GetResult();
+            var reader = _downloader.DownloadSync($"{ChunkToc.Header.ChunksDirectory}/chunks/{hash[..2]}/{hash}.iochunk");
 
             var compressionBlockSize = TocResource.Header.CompressionBlockSize;
             var dst = new byte[length];

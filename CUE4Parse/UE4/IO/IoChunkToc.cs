@@ -103,6 +103,34 @@ public class IoStoreOnDemandDownloader : IDisposable
         return outStream;
     }
 
+    public Stream DownloadSync(string url)
+    {
+        var cachePath = _options.ChunkCacheDirectory.Exists ? Path.Combine(_options.ChunkCacheDirectory.FullName, url.SubstringAfterLast('/')) : null;
+        if (cachePath != null && File.Exists(cachePath))
+        {
+            var fs = new FileStream(cachePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return fs;
+        }
+
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Get, new Uri(_options.ChunkHostUri, url));
+        if (_options.UseAuth) requestMessage.Headers.Authorization = _options.Authorization;
+        using var response = _client.Send(requestMessage);
+        using var responseStream = response.Content.ReadAsStream();
+        using var bufferStream = new MemoryStream();
+        responseStream.CopyTo(bufferStream);
+        var outData = bufferStream.ToArray();
+        var outStream = new MemoryStream(outData, false);
+
+        if (cachePath != null)
+        {
+            using var cacheFs = new FileStream(cachePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+            outStream.CopyTo(cacheFs);
+        }
+
+        outStream.Position = 0L;
+        return outStream;
+    }
+
     public void Dispose()
     {
         _client.Dispose();
