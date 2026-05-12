@@ -1,8 +1,12 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.UE4.VirtualFileCache;
 
@@ -40,6 +44,27 @@ namespace CUE4Parse.FileProvider.Objects
                 offset += fs.Read(data, offset, r.Range.NumBlocks * blockSize);
             }
             return data;
+        }
+
+        public override async Task<byte[]> ReadAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var offset = 0;
+            var data = new byte[Size];
+            foreach (var r in Ranges)
+            {
+                var blockSize = BlockFiles.First(x => x.FileId == r.FileId).BlockSize;
+                await using var fs = new FileStream(System.IO.Path.Combine(_persistentDownloadDir, r.GetPersistentDownloadPath()), FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                fs.Seek(r.Range.StartIndex * blockSize, SeekOrigin.Begin);
+                offset += await fs.ReadAsync(data.AsMemory(offset, r.Range.NumBlocks * blockSize), cancellationToken).ConfigureAwait(false);
+            }
+            return data;
+        }
+
+        public override async Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken)
+        {
+            var bytes = await ReadAsync(cancellationToken).ConfigureAwait(false);
+            return new FByteArchive(Path, bytes, Versions);
         }
     }
 }

@@ -316,6 +316,12 @@ public sealed class HoKdbFileReader : AbstractAesVfsReader
         throw new NotImplementedException();
     }
 
+    public override Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, System.Threading.CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Extract(entry, header));
+    }
+
     public override void Dispose()
     {
         foreach (var containerStream in _containerStreams)

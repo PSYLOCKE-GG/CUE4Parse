@@ -36,6 +36,13 @@ namespace CUE4Parse.UE4.IO
             return Read(ioEntry.ChunkId);
         }
 
+        public override async Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, CancellationToken cancellationToken = default)
+        {
+            if (entry is not FIoStoreEntry ioEntry || entry.Vfs != this)
+                throw new ArgumentException($"Wrong io store reader, required {entry.Vfs.Path}, this is {Path}");
+            return await ReadAsync(ioEntry.ChunkId, cancellationToken).ConfigureAwait(false);
+        }
+
         public override byte[] Read(FIoChunkId chunkId)
         {
             if (ChunkToc.Header.IsLegacy)
@@ -51,6 +58,23 @@ namespace CUE4Parse.UE4.IO
 
             throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStoreOnDemand {Name}");
         }
+
+        public async Task<byte[]> ReadAsync(FIoChunkId chunkId, CancellationToken cancellationToken = default)
+        {
+            if (ChunkToc.Header.IsLegacy)
+            {
+                return await ReadAsync(Container.Entries.FirstOrDefault(entry => entry.ChunkId == chunkId), cancellationToken).ConfigureAwait(false);
+            }
+
+            var index = Array.IndexOf(Container.ContainerData.ChunkIds, chunkId);
+            if (index >= 0)
+            {
+                return await ReadAsync(chunkId, Container.ContainerData.ChunkEntries[index], cancellationToken).ConfigureAwait(false);
+            }
+
+            throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStoreOnDemand {Name}");
+        }
+
         private byte[] Read(FOnDemandTocEntry? onDemandEntry)
         {
             if (onDemandEntry == null) throw new ParserException("Can't read unknown on-demand entry");
@@ -61,12 +85,32 @@ namespace CUE4Parse.UE4.IO
             throw new KeyNotFoundException($"Couldn't find chunk {onDemandEntry.ChunkId} in IoStoreOnDemand {Name}");
         }
 
+        private async Task<byte[]> ReadAsync(FOnDemandTocEntry? onDemandEntry, CancellationToken cancellationToken)
+        {
+            if (onDemandEntry == null) throw new ParserException("Can't read unknown on-demand entry");
+            if (TryResolve(onDemandEntry.ChunkId, out var offsetLength))
+            {
+                return await ReadAsync(onDemandEntry.Hash.ToString().ToLower(), (long) offsetLength.Offset, (long) offsetLength.Length, cancellationToken).ConfigureAwait(false);
+            }
+            throw new KeyNotFoundException($"Couldn't find chunk {onDemandEntry.ChunkId} in IoStoreOnDemand {Name}");
+        }
+
         private byte[] Read(FIoChunkId chunkId, FOnDemandChunkEntry? onDemandEntry)
         {
             if (onDemandEntry == null) throw new ParserException("Can't read unknown on-demand entry");
             if (TryResolve(chunkId, out var offsetLength))
             {
                 return Read(onDemandEntry.Hash.ToString().ToLower(), (long)offsetLength.Offset, (long)offsetLength.Length);
+            }
+            throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStoreOnDemand {Name}");
+        }
+
+        private async Task<byte[]> ReadAsync(FIoChunkId chunkId, FOnDemandChunkEntry? onDemandEntry, CancellationToken cancellationToken)
+        {
+            if (onDemandEntry == null) throw new ParserException("Can't read unknown on-demand entry");
+            if (TryResolve(chunkId, out var offsetLength))
+            {
+                return await ReadAsync(onDemandEntry.Hash.ToString().ToLower(), (long) offsetLength.Offset, (long) offsetLength.Length, cancellationToken).ConfigureAwait(false);
             }
             throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStoreOnDemand {Name}");
         }
@@ -101,6 +145,63 @@ namespace CUE4Parse.UE4.IO
                 if (uncompressedBuffer.Length < uncompressedSize)
                 {
                     //Console.WriteLine($"{chunkId}: block {blockIndex} UncompressedBuffer size: {uncompressedSize} - Had to create copy");
+                    uncompressedBuffer = new byte[uncompressedSize];
+                }
+
+                reader.ReadExactly(compressedBuffer, 0, (int) rawSize);
+                compressedBuffer = DecryptIfEncrypted(compressedBuffer, 0, (int) rawSize);
+
+                byte[] src;
+                if (compressionBlock.CompressionMethodIndex == 0)
+                {
+                    src = compressedBuffer;
+                }
+                else
+                {
+                    var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                    Compression.Compression.Decompress(compressedBuffer, 0, (int) rawSize, uncompressedBuffer, 0, (int) uncompressedSize, compressionMethod);
+                    src = uncompressedBuffer;
+                }
+
+                var sizeInBlock = (int) Math.Min(compressionBlockSize - offsetInBlock, remainingSize);
+                Buffer.BlockCopy(src, (int) offsetInBlock, dst, dstOffset, sizeInBlock);
+                offsetInBlock = 0;
+                remainingSize -= sizeInBlock;
+                dstOffset += sizeInBlock;
+            }
+
+            return dst;
+        }
+
+        private async Task<byte[]> ReadAsync(string hash, long offset, long length, CancellationToken cancellationToken)
+        {
+            var reader = await _downloader.Download($"{ChunkToc.Header.ChunksDirectory}/chunks/{hash[..2]}/{hash}.iochunk").ConfigureAwait(false);
+
+            var compressionBlockSize = TocResource.Header.CompressionBlockSize;
+            var dst = new byte[length];
+            var firstBlockIndex = (int) (offset / compressionBlockSize);
+            var lastBlockIndex = (int) (((offset + dst.Length).Align((int) compressionBlockSize) - 1) / compressionBlockSize);
+            var offsetInBlock = offset % compressionBlockSize;
+            var remainingSize = length;
+            var dstOffset = 0;
+
+            var compressedBuffer = Array.Empty<byte>();
+            var uncompressedBuffer = Array.Empty<byte>();
+
+            for (int blockIndex = firstBlockIndex; blockIndex <= lastBlockIndex; blockIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ref var compressionBlock = ref TocResource.CompressionBlocks[blockIndex];
+
+                var rawSize = compressionBlock.CompressedSize.Align(Aes.ALIGN);
+                if (compressedBuffer.Length < rawSize)
+                {
+                    compressedBuffer = new byte[rawSize];
+                }
+
+                var uncompressedSize = compressionBlock.UncompressedSize;
+                if (uncompressedBuffer.Length < uncompressedSize)
+                {
                     uncompressedBuffer = new byte[uncompressedSize];
                 }
 

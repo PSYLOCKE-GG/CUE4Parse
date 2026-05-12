@@ -67,11 +67,7 @@ namespace CUE4Parse.UE4.VirtualFileSystem
         /// <see cref="CUE4Parse.FileProvider.Vfs.AbstractVfsFileProvider"/>), each override clones the
         /// underlying archive per call and concurrent calls are safe.
         /// </remarks>
-        public virtual Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(Extract(entry, header));
-        }
+        public abstract Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, CancellationToken cancellationToken = default);
 
         protected void ValidateMountPoint(ref string mountPoint)
         {

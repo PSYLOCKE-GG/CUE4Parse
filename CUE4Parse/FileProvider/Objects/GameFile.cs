@@ -127,17 +127,9 @@ public abstract class GameFile
     // a genuine async path (FPakEntry, FIoStoreEntry, OsGameFile) override these. The
     // parameterless overloads exist for API compatibility and forward with CancellationToken.None.
 
-    public virtual Task<byte[]> ReadAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(Read());
-    }
+    public abstract Task<byte[]> ReadAsync(CancellationToken cancellationToken);
 
-    public virtual Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(CreateReader());
-    }
+    public abstract Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken);
 
     public virtual async Task<byte[]?> SafeReadAsync(CancellationToken cancellationToken)
     {

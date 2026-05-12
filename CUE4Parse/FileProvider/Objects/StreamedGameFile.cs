@@ -1,7 +1,10 @@
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 
 namespace CUE4Parse.FileProvider.Objects;
@@ -36,5 +39,17 @@ public class StreamedGameFile : VersionedGameFile
         if (bytesRead != Size)
             throw new FileLoadException("Read operation mismatch: bytesRead ≠ Size");
         return data;
+    }
+
+    public override Task<byte[]> ReadAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Read());
+    }
+
+    public override Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(CreateReader());
     }
 }

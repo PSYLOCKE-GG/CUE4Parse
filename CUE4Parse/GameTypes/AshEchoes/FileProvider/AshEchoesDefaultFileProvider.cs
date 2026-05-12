@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.FileProvider;
 using CUE4Parse.FileProvider.Objects;
@@ -324,6 +325,12 @@ public class AEPakFileReader : AbstractAesVfsReader
                 reader.Dispose();
             }
         }
+    }
+
+    public override Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, System.Threading.CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Extract(entry, header));
     }
 
     public override void Dispose()
