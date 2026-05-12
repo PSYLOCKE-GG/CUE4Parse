@@ -108,6 +108,107 @@ namespace CUE4Parse.UE4.Pak
             }
         }
 
+        public override async Task ExtractToAsync(VfsEntry entry, Stream destination, FByteBulkDataHeader? header = null, CancellationToken cancellationToken = default)
+        {
+            if (entry is not FPakEntry pakEntry || entry.Vfs != this) throw new ArgumentException($"Wrong pak file reader, required {entry.Vfs.Name}, this is {Name}");
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Game-specific extract paths still allocate the byte[] aggregate internally — route them
+            // through the default ExtractAsync + WriteAsync fallback. Streaming those is a mechanical
+            // per-game follow-up (each has its own encryption quirk).
+            if (pakEntry.IsCompressed && Game is EGame.GAME_MarvelRivals or EGame.GAME_OperationApocalypse or EGame.GAME_WutheringWaves or EGame.GAME_MindsEye or EGame.GAME_GameForPeace or EGame.GAME_Rennsport or EGame.GAME_DragonQuestXI or EGame.GAME_ArenaBreakoutInfinite)
+            {
+                await base.ExtractToAsync(entry, destination, header, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            if (!pakEntry.IsCompressed && Game is EGame.GAME_MarvelRivals or EGame.GAME_OperationApocalypse or EGame.GAME_WutheringWaves or EGame.GAME_MindsEye or EGame.GAME_Rennsport or EGame.GAME_DragonQuestXI or EGame.GAME_ArenaBreakoutInfinite)
+            {
+                await base.ExtractToAsync(entry, destination, header, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            var reader = IsConcurrent ? (FArchive) Ar.Clone() : Ar;
+            try
+            {
+                await ExtractToAsyncCore(reader, pakEntry, header, destination, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (IsConcurrent) reader.Dispose();
+            }
+        }
+
+        /// <summary>Streaming twin of <see cref="ExtractAsyncCore"/>. Per-block <see cref="Stream.WriteAsync(System.ReadOnlyMemory{byte}, CancellationToken)"/>
+        /// to <paramref name="destination"/> instead of accumulating into a per-call uncompressed byte[].</summary>
+        private async Task ExtractToAsyncCore(FArchive reader, FPakEntry pakEntry, FByteBulkDataHeader? header, Stream destination, CancellationToken cancellationToken)
+        {
+            var alignment = pakEntry.IsEncrypted ? Aes.ALIGN : 1;
+
+            long offset = 0;
+            var requestedSize = (int) pakEntry.UncompressedSize;
+            if (header is { } bulk)
+            {
+                offset = bulk.OffsetInFile;
+                requestedSize = (int) bulk.SizeOnDisk;
+            }
+
+            if (pakEntry.IsCompressed)
+            {
+                var compressionBlockSize = (int) pakEntry.CompressionBlockSize;
+                var firstBlockIndex = offset / compressionBlockSize;
+                var lastBlockIndex = (offset + requestedSize - 1) / compressionBlockSize;
+                var offsetInFirstBlock = (int) (offset - firstBlockIndex * compressionBlockSize);
+                var remainingSize = requestedSize;
+
+                byte[]? compressedBuffer = null;
+                byte[]? uncompressedBuffer = null;
+                try
+                {
+                    uncompressedBuffer = ArrayPool<byte>.Shared.Rent(compressionBlockSize);
+
+                    for (var blockIndex = firstBlockIndex; blockIndex <= lastBlockIndex; blockIndex++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var block = pakEntry.CompressionBlocks[blockIndex];
+                        var blockSize = (int) block.Size;
+                        var srcSize = blockSize.Align(alignment);
+                        if (compressedBuffer is null || srcSize > compressedBuffer.Length)
+                        {
+                            if (compressedBuffer is not null) ArrayPool<byte>.Shared.Return(compressedBuffer);
+                            compressedBuffer = ArrayPool<byte>.Shared.Rent(srcSize);
+                        }
+                        var compressed = await ReadAndDecryptAtAsync(compressedBuffer, block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+                        var uncompressedSize = (int) Math.Min(compressionBlockSize, pakEntry.UncompressedSize - blockIndex * compressionBlockSize);
+                        if (uncompressedBuffer.Length < uncompressedSize)
+                        {
+                            ArrayPool<byte>.Shared.Return(uncompressedBuffer);
+                            uncompressedBuffer = ArrayPool<byte>.Shared.Rent(uncompressedSize);
+                        }
+                        Decompress(compressed, 0, blockSize, uncompressedBuffer, 0, uncompressedSize, pakEntry.CompressionMethod);
+
+                        var sizeInBlock = Math.Min(uncompressedSize - offsetInFirstBlock, remainingSize);
+                        await destination.WriteAsync(uncompressedBuffer.AsMemory(offsetInFirstBlock, sizeInBlock), cancellationToken).ConfigureAwait(false);
+                        remainingSize -= sizeInBlock;
+                        offsetInFirstBlock = 0;
+                    }
+                }
+                finally
+                {
+                    if (compressedBuffer is not null) ArrayPool<byte>.Shared.Return(compressedBuffer);
+                    if (uncompressedBuffer is not null) ArrayPool<byte>.Shared.Return(uncompressedBuffer);
+                }
+
+                return;
+            }
+
+            var readOffset = offset & ~((long) alignment - 1);
+            var dataOffset = (int) (offset - readOffset);
+            var readSize = (int) (dataOffset + requestedSize).Align(alignment);
+            var data = await ReadAndDecryptAtAsync(pakEntry.Offset + pakEntry.StructSize + readOffset, readSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+            await destination.WriteAsync(data.AsMemory(dataOffset, requestedSize), cancellationToken).ConfigureAwait(false);
+        }
+
         private async Task<byte[]> ExtractAsyncCore(FArchive reader, FPakEntry pakEntry, FByteBulkDataHeader? header, CancellationToken cancellationToken)
         {
             var alignment = pakEntry.IsEncrypted ? Aes.ALIGN : 1;

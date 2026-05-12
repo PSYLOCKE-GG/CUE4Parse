@@ -1,9 +1,11 @@
 using System;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CUE4Parse.Compression;
 using CUE4Parse.Encryption.Aes;
+using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Readers;
@@ -145,5 +147,19 @@ public abstract partial class AbstractAesVfsReader : AbstractVfsReader, IAesVfsR
         var bytes = new byte[length];
         await reader.ReadAtAsync(position, bytes.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
         return DecryptIfEncrypted(bytes, isEncrypted, true);
+    }
+
+    // Streaming twin of ExtractAsync. The default falls back to ExtractAsync + WriteAsync, which still
+    // materializes the full uncompressed payload as a byte[]. Subclasses with a block-level pipeline
+    // (PakFileReader, IoStoreReader) override this to pipe per-block decompressed memory straight to
+    // the destination Stream, skipping the transient byte[] allocation.
+    public virtual async Task ExtractToAsync(
+        VfsEntry entry,
+        Stream destination,
+        FByteBulkDataHeader? header = null,
+        CancellationToken cancellationToken = default)
+    {
+        var bytes = await ExtractAsync(entry, header, cancellationToken).ConfigureAwait(false);
+        await destination.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
     }
 }
