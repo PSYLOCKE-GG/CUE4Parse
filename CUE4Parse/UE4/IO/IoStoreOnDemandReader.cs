@@ -59,7 +59,7 @@ namespace CUE4Parse.UE4.IO
             throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStoreOnDemand {Name}");
         }
 
-        public async Task<byte[]> ReadAsync(FIoChunkId chunkId, CancellationToken cancellationToken = default)
+        public override async Task<byte[]> ReadAsync(FIoChunkId chunkId, CancellationToken cancellationToken = default)
         {
             if (ChunkToc.Header.IsLegacy)
             {
