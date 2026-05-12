@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Tasks;
 using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets.Exports;
@@ -207,6 +208,22 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
             export = null;
         }
         return export != null;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Task<UObject?> LoadAsync() => Task.FromResult(Load());
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Task<UObject?> TryLoadAsync()
+    {
+        try
+        {
+            return Task.FromResult(Load());
+        }
+        catch
+        {
+            return Task.FromResult<UObject?>(null);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
