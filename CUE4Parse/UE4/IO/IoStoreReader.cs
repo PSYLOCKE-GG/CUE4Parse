@@ -42,7 +42,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
     public IoStoreReader(string tocPath, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FileInfo(tocPath), readOptions, versions) { }
     public IoStoreReader(FileInfo utocFile, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
-        : this(new FByteArchive(utocFile.FullName, File.ReadAllBytes(utocFile.FullName), versions), it => new FStreamArchive(it, File.Open(it, FileMode.Open, FileAccess.Read, FileShare.ReadWrite), versions), readOptions) { }
+        : this(new FByteArchive(utocFile.FullName, File.ReadAllBytes(utocFile.FullName), versions), it => new FRandomAccessFileStreamArchive(it, versions), readOptions) { }
     public IoStoreReader(string tocPath, Stream tocStream, Stream casStream, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FStreamArchive(tocPath, tocStream, versions), it => new FStreamArchive(it, casStream, versions), readOptions) { }
     public IoStoreReader(string tocPath, Stream tocStream, Func<string, FArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)

@@ -72,7 +72,7 @@ namespace CUE4Parse.UE4.Pak
         public PakFileReader(string filePath, VersionContainer? versions = null)
             : this(new FileInfo(filePath), versions) {}
         public PakFileReader(FileInfo file, VersionContainer? versions = null)
-            : this(file.FullName, file.Open(FileMode.Open, FileAccess.Read, FileShare.ReadWrite), versions) {}
+            : this(new FRandomAccessFileStreamArchive(file, versions)) {}
         public PakFileReader(string filePath, Stream stream, VersionContainer? versions = null)
             : this(new FStreamArchive(filePath, stream, versions)) {}
         public PakFileReader(string filePath, RandomAccessStream stream, VersionContainer? versions = null)
