@@ -153,24 +153,30 @@ namespace CUE4Parse.UE4.Objects.UObject
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<UExport?> LoadAsync()
+        public Task<UExport?> LoadAsync()
         {
             if (ResolvedObject != null)
-                return await ResolvedObject.LoadAsync();
+                return Task.FromResult<UExport?>(ResolvedObject.Load());
             throw new ParserException($"{ToString()} could not be loaded");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<UExport?> TryLoadAsync()
+        public Task<UExport?> TryLoadAsync()
         {
             if (ResolvedObject != null)
             {
-                var loadedObj = await ResolvedObject.TryLoadAsync();
-                if (loadedObj != null)
-                    return loadedObj;
+                try
+                {
+                    var loadedObj = ResolvedObject.Load();
+                    if (loadedObj != null)
+                        return Task.FromResult<UExport?>(loadedObj);
+                }
+                catch
+                {
+                }
             }
 
-            return null;
+            return Task.FromResult<UExport?>(null);
         }
         #endregion
 
