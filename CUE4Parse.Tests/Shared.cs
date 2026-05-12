@@ -1,4 +1,6 @@
-﻿using CUE4Parse.Compression;
+﻿using System.Threading;
+using System.Threading.Tasks;
+using CUE4Parse.Compression;
 using CUE4Parse.FileProvider;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Assets.Objects;
@@ -13,6 +15,9 @@ public class DummyGameFile : GameFile
 
     public override byte[] Read(FByteBulkDataHeader? header = null) => throw new NotImplementedException();
     public override FArchive CreateReader(FByteBulkDataHeader? header = null) => throw new NotImplementedException();
+
+    public override Task<byte[]> ReadAsync(CancellationToken cancellationToken) => throw new NotImplementedException();
+    public override Task<FArchive> CreateReaderAsync(CancellationToken cancellationToken) => throw new NotImplementedException();
 }
 
 public class DummyFileProvider : AbstractFileProvider
