@@ -68,6 +68,16 @@ namespace CUE4Parse.FileProvider
         public bool SkipReferencedTextures { get; set; }
         public bool UseLazyPackageSerialization { get; set; } = true;
 
+        /// <summary>
+        /// When LoadPackageAsync opens a pak or io-store entry whose uncompressed size is at or below
+        /// this threshold, the entire uasset is pre-buffered via a single async extract — letting
+        /// subsequent in-memory deserialization run sync against a byte buffer instead of triggering
+        /// a sync block fetch per Read&lt;T&gt;() call. Packages above the threshold fall back to the
+        /// streaming cursor path to avoid materializing multi-GB shader archives.
+        /// Default 64 MiB. Set to <see cref="long.MaxValue"/> to always pre-buffer, or 0 to always stream.
+        /// </summary>
+        public long PackagePreBufferThresholdBytes { get; set; } = 64L * 1024 * 1024;
+
         public TypeMappings? MappingsForGame => MappingsContainer?.MappingsForGame;
 
         protected AbstractFileProvider(VersionContainer? versions = null, StringComparer? pathComparer = null)
@@ -643,7 +653,9 @@ namespace CUE4Parse.FileProvider
             switch (file)
             {
                 case FPakEntry pakEntry:
-                    var pakUasset = pakEntry.CreateStreamingReader();
+                    FArchive pakUasset = pakEntry.Size <= PackagePreBufferThresholdBytes
+                        ? await pakEntry.CreateReaderAsync().ConfigureAwait(false)
+                        : pakEntry.CreateStreamingReader();
                     var uexpAr = uexp != null ? await uexp.CreateReaderAsync().ConfigureAwait(false) : null;
                     return new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization);
                 case OsGameFile:
@@ -651,7 +663,9 @@ namespace CUE4Parse.FileProvider
                     var uexpArOs = uexp != null ? await uexp.CreateReaderAsync().ConfigureAwait(false) : null;
                     return new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
-                    var ioUasset = ioStoreEntry.CreateStreamingReader();
+                    FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
+                        ? await ioStoreEntry.CreateReaderAsync().ConfigureAwait(false)
+                        : ioStoreEntry.CreateStreamingReader();
                     return new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
@@ -674,7 +688,9 @@ namespace CUE4Parse.FileProvider
             switch (file)
             {
                 case FPakEntry pakEntry:
-                    var pakUasset = pakEntry.CreateStreamingReader(); // sync cursor — does not pre-read bytes
+                    FArchive pakUasset = pakEntry.Size <= PackagePreBufferThresholdBytes
+                        ? await pakEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
+                        : pakEntry.CreateStreamingReader();
                     var uexpAr = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
                     return new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization);
                 case OsGameFile:
@@ -682,7 +698,9 @@ namespace CUE4Parse.FileProvider
                     var uexpArOs = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
                     return new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
-                    var ioUasset = ioStoreEntry.CreateStreamingReader(); // sync cursor
+                    FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
+                        ? await ioStoreEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
+                        : ioStoreEntry.CreateStreamingReader();
                     return new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
