@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -151,20 +152,28 @@ namespace CUE4Parse.UE4.Pak
                 var uncompressed = new byte[bufferSize];
                 var uncompressedOff = 0;
 
-                var compressedBuffer = Array.Empty<byte>();
-                for (var blockIndex = firstBlockIndex; blockIndex <= lastBlockIndex; blockIndex++)
+                byte[]? compressedBuffer = null;
+                try
                 {
-                    var block = pakEntry.CompressionBlocks[blockIndex];
-                    var blockSize = (int) block.Size;
-                    var srcSize = blockSize.Align(alignment);
-                    if (srcSize > compressedBuffer.Length)
+                    for (var blockIndex = firstBlockIndex; blockIndex <= lastBlockIndex; blockIndex++)
                     {
-                        compressedBuffer = new byte[srcSize];
+                        var block = pakEntry.CompressionBlocks[blockIndex];
+                        var blockSize = (int) block.Size;
+                        var srcSize = blockSize.Align(alignment);
+                        if (compressedBuffer is null || srcSize > compressedBuffer.Length)
+                        {
+                            if (compressedBuffer is not null) ArrayPool<byte>.Shared.Return(compressedBuffer);
+                            compressedBuffer = ArrayPool<byte>.Shared.Rent(srcSize);
+                        }
+                        var compressed = await ReadAndDecryptAtAsync(compressedBuffer, block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
+                        var uncompressedSize = (int) Math.Min(compressionBlockSize, pakEntry.UncompressedSize - blockIndex * compressionBlockSize);
+                        Decompress(compressed, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
+                        uncompressedOff += uncompressedSize;
                     }
-                    var compressed = await ReadAndDecryptAtAsync(compressedBuffer, block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted, cancellationToken).ConfigureAwait(false);
-                    var uncompressedSize = (int) Math.Min(compressionBlockSize, pakEntry.UncompressedSize - blockIndex * compressionBlockSize);
-                    Decompress(compressed, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
-                    uncompressedOff += uncompressedSize;
+                }
+                finally
+                {
+                    if (compressedBuffer is not null) ArrayPool<byte>.Shared.Return(compressedBuffer);
                 }
 
                 var offsetInFirstBlock = offset - firstBlockIndex * compressionBlockSize;
@@ -249,25 +258,33 @@ namespace CUE4Parse.UE4.Pak
                 var uncompressed = new byte[bufferSize];
                 var uncompressedOff = 0;
 
-                var compressedBuffer = Array.Empty<byte>();
-                // decompress the required blocks
-                for (var blockIndex = firstBlockIndex; blockIndex <= lastBlockIndex; blockIndex++)
+                byte[]? compressedBuffer = null;
+                try
                 {
-                    var block = pakEntry.CompressionBlocks[blockIndex];
-                    var blockSize = (int) block.Size;
-                    var srcSize = blockSize.Align(alignment);
-                    if (srcSize > compressedBuffer.Length)
+                    // decompress the required blocks
+                    for (var blockIndex = firstBlockIndex; blockIndex <= lastBlockIndex; blockIndex++)
                     {
-                        compressedBuffer = new byte[srcSize];
+                        var block = pakEntry.CompressionBlocks[blockIndex];
+                        var blockSize = (int) block.Size;
+                        var srcSize = blockSize.Align(alignment);
+                        if (compressedBuffer is null || srcSize > compressedBuffer.Length)
+                        {
+                            if (compressedBuffer is not null) ArrayPool<byte>.Shared.Return(compressedBuffer);
+                            compressedBuffer = ArrayPool<byte>.Shared.Rent(srcSize);
+                        }
+                        // Read the compressed block
+                        var compressed = ReadAndDecryptAt(compressedBuffer, block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted);
+                        // Calculate the uncompressed size,
+                        // its either just the compression block size,
+                        // or if it's the last block, it's the remaining data size
+                        var uncompressedSize = (int) Math.Min(compressionBlockSize, pakEntry.UncompressedSize - blockIndex * compressionBlockSize);
+                        Decompress(compressed, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
+                        uncompressedOff += uncompressedSize;
                     }
-                    // Read the compressed block
-                    var compressed = ReadAndDecryptAt(compressedBuffer, block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted);
-                    // Calculate the uncompressed size,
-                    // its either just the compression block size,
-                    // or if it's the last block, it's the remaining data size
-                    var uncompressedSize = (int) Math.Min(compressionBlockSize, pakEntry.UncompressedSize - blockIndex * compressionBlockSize);
-                    Decompress(compressed, 0, blockSize, uncompressed, uncompressedOff, uncompressedSize, pakEntry.CompressionMethod);
-                    uncompressedOff += uncompressedSize;
+                }
+                finally
+                {
+                    if (compressedBuffer is not null) ArrayPool<byte>.Shared.Return(compressedBuffer);
                 }
 
                 switch (Ar.Game)
