@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -35,7 +36,8 @@ public partial class IoStoreReader : AbstractAesVfsReader
     public override string MountPoint { get; protected set; }
     public sealed override long Length { get; set; }
 
-    public override bool HasDirectoryIndex => TocResource.DirectoryIndexBuffer != null;
+    private readonly bool _hasDirectoryIndex;
+    public override bool HasDirectoryIndex => _hasDirectoryIndex;
     public override FGuid EncryptionKeyGuid => TocResource.Header.EncryptionKeyGuid;
     public override bool IsEncrypted => TocResource.Header.ContainerFlags.HasFlag(EIoContainerFlags.Encrypted);
 
@@ -53,11 +55,12 @@ public partial class IoStoreReader : AbstractAesVfsReader
     public IoStoreReader(string tocPath, RandomAccessStream tocStream, Func<string, FRandomAccessStreamArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll, VersionContainer? versions = null)
         : this(new FRandomAccessStreamArchive(tocPath, tocStream, versions), openContainerStreamFunc, readOptions) { }
 
-    public IoStoreReader(FArchive tocStream, Func<string, FArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadAll)
+    public IoStoreReader(FArchive tocStream, Func<string, FArchive> openContainerStreamFunc, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.ReadDirectoryIndex)
         : base(tocStream.Name, tocStream.Versions)
     {
         Length = tocStream.Length;
         TocResource = new FIoStoreTocResource(tocStream, readOptions);
+        _hasDirectoryIndex = TocResource.DirectoryIndexBuffer != null;
         CompressionMethods = TocResource.CompressionMethods;
 
         List<FArchive> containerStreams;
@@ -861,6 +864,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         watch.Start();
 
         ProcessIndex(pathComparer);
+        TocResource.DirectoryIndexBuffer = null;
         ContainerHeader = ReadContainerHeader();
 
         if (Globals.LogVfsMounts)
@@ -939,7 +943,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
             }
         }
 
-        Files = files;
+        Files = files.ToFrozenDictionary(pathComparer);
         ArrayPool<char>.Shared.Return(dirNamePool);
     }
 

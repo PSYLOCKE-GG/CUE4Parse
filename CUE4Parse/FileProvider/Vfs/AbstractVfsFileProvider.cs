@@ -66,6 +66,8 @@ namespace CUE4Parse.FileProvider.Vfs
 
         public IReadOnlyDictionary<FPackageId, GameFile> FilesById => Files.ById;
 
+        public bool ReadIoStoreTocMeta { get; set; } = false;
+
         public IAesVfsReader.CustomEncryptionDelegate? CustomEncryption { get; set; }
         public event EventHandler<int>? VfsRegistered;
         public event EventHandler<int>? VfsMounted;
@@ -143,7 +145,7 @@ namespace CUE4Parse.FileProvider.Vfs
                         break;
                     case "UTOC":
                         openContainerStreamFunc ??= it => new FStreamArchive(it, stream!, Versions);
-                        reader = new IoStoreReader(archive, openContainerStreamFunc);
+                        reader = new IoStoreReader(archive, openContainerStreamFunc, ReadIoStoreTocMeta ? EIoStoreTocReadOptions.ReadAll : EIoStoreTocReadOptions.ReadDirectoryIndex);
                         break;
                     case "UONDEMANDTOC":
                         if (OnDemandOptions is null)
@@ -177,7 +179,7 @@ namespace CUE4Parse.FileProvider.Vfs
                         break;
                     case "UTOC":
                         openContainerStreamFunc ??= _ => utocArchive!;
-                        reader = new IoStoreReader(pakOrUtocArchive, openContainerStreamFunc);
+                        reader = new IoStoreReader(pakOrUtocArchive, openContainerStreamFunc, ReadIoStoreTocMeta ? EIoStoreTocReadOptions.ReadAll : EIoStoreTocReadOptions.ReadDirectoryIndex);
                         break;
                     case "UONDEMANDTOC":
                         if (OnDemandOptions is null)
@@ -209,7 +211,7 @@ namespace CUE4Parse.FileProvider.Vfs
                         break;
                     case "UTOC":
                         openContainerStreamFunc ??= it => new FRandomAccessStreamArchive(it, utocStream!, Versions);
-                        reader = new IoStoreReader(pakOrUtocArchive, openContainerStreamFunc);
+                        reader = new IoStoreReader(pakOrUtocArchive, openContainerStreamFunc, ReadIoStoreTocMeta ? EIoStoreTocReadOptions.ReadAll : EIoStoreTocReadOptions.ReadDirectoryIndex);
                         break;
                     case "UONDEMANDTOC":
                         if (OnDemandOptions is null)

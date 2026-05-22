@@ -28,7 +28,7 @@ namespace CUE4Parse.UE4.IO.Objects
         public readonly FIoStoreTocCompressedBlockEntry[] CompressionBlocks;
         public readonly CompressionMethod[] CompressionMethods;
 
-        public readonly byte[]? DirectoryIndexBuffer;
+        public byte[]? DirectoryIndexBuffer { get; internal set; }
         public readonly FIoStoreTocEntryMeta[]? ChunkMetas;
 
         public FIoStoreTocResource(FArchive Ar, EIoStoreTocReadOptions readOptions = EIoStoreTocReadOptions.Default)
