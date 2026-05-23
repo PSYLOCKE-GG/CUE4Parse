@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets;
@@ -16,7 +17,8 @@ public class FakePackage : IPackage
     public FNameEntrySerialized[] NameMap { get; }
     public int ImportMapLength { get; }
     public int ExportMapLength { get; }
-    public Lazy<UObject>[] ExportsLazy { get; }
+    public IReadOnlyList<ExportInfo> Exports { get; } = Array.Empty<ExportInfo>();
+    public Lazy<UObject>[] ExportsLazy { get; } = Array.Empty<Lazy<UObject>>();
     public bool IsFullyLoaded { get; }
     public bool CanDeserialize { get; }
 

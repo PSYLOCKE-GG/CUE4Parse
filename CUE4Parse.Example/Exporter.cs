@@ -99,12 +99,12 @@ public static class Exporter
                 for (var i = 0; i < pkg.ExportMapLength; i++)
                 {
                     var pointer = new FPackageIndex(pkg, i + 1).ResolvedObject;
-                    if (pointer?.Object is null) continue;
+                    if (pointer?.Load() is not { } loaded) continue;
 
                     var dummy = ((AbstractUePackage) pkg).ConstructObject(pointer.Class, pkg);
                     switch (dummy)
                     {
-                        case UTexture when type.HasFlag(ExportType.Texture) && pointer.Object.Value is UTexture texture:
+                        case UTexture when type.HasFlag(ExportType.Texture) && loaded is UTexture texture:
                         {
                             try
                             {
@@ -123,10 +123,10 @@ public static class Exporter
                         {
                             Log.Information("{ExportType} found in {PackageName}", dummy.ExportType, package.Name);
 
-                            pointer.Object.Value.Decode(true, out var format, out var bytes);
+                            loaded.Decode(true, out var format, out var bytes);
                             if (bytes is not null)
                             {
-                                var fileName = $"{pointer.Object.Value.Name}.{format.ToLower()}";
+                                var fileName = $"{loaded.Name}.{format.ToLower()}";
                                 WriteToFile(folder, fileName, bytes, fileName, ref exportCount);
                             }
 
@@ -139,7 +139,7 @@ public static class Exporter
                         {
                             Log.Information("{ExportType} found in {PackageName}", dummy.ExportType, package.Name);
 
-                            var exporter = new CUE4Parse_Conversion.Exporter(pointer.Object.Value, options);
+                            var exporter = new CUE4Parse_Conversion.Exporter(loaded, options);
                             if (exporter.TryWriteToDir(new DirectoryInfo(_exportDirectory), out _, out var filePath))
                             {
                                 WriteToLog(folder, Path.GetFileName(filePath), ref exportCount);

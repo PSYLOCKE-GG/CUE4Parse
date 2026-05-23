@@ -132,7 +132,7 @@ public class UObject : AbstractPropertyHolder
         {
             if (Class == null)
                 throw new ParserException(Ar, "Found unversioned properties but object does not have a class");
-            if (Class.Object?.Value is not UStruct struc)
+            if (Class.LoadAsStruct() is not { } struc)
                 throw new ParserException(Ar, "Found unversioned properties but object's class is not a struct");
 
             DeserializePropertiesUnversioned(Properties = [], Ar, struc);
@@ -150,7 +150,7 @@ public class UObject : AbstractPropertyHolder
         if (FUE5MainStreamObjectVersion.Get(Ar) < FUE5MainStreamObjectVersion.Type.SparseClassDataStructSerialization || !Flags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
             return;
 
-        if (Class?.Object?.Value.ExportType is { } type && type.EndsWith("BlueprintGeneratedClass"))
+        if (Class?.Load()?.ExportType is { } type && type.EndsWith("BlueprintGeneratedClass"))
         {
             SerializedSparseClassDataStruct = new FPackageIndex(Ar).Load<UStruct>();
             if (SerializedSparseClassDataStruct is null) return;
@@ -525,14 +525,14 @@ public static class PropertyUtil
         if (SearchPropertyInTemplate && holder is UObject obj)
         {
             // if not here then in look in template
-            var temp = obj.Template?.Object?.Value;
+            var temp = obj.Template?.Load();
             if (temp != null && temp.TryGet(name, out tag, comparisonType))
             {
                 return true;
             }
 
             // if not here then in look in class ..? // not sure about this one
-            temp = obj.Class?.Object?.Value;
+            temp = obj.Class?.Load();
             if (temp != null && temp.TryGet(name, out tag, comparisonType))
             {
                 return true;

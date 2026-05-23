@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -21,7 +21,14 @@ public interface IPackage
     public int ImportMapLength { get; }
     public int ExportMapLength { get; }
 
+    // Preferred public API for iterating exports. Each ExportInfo carries a
+    // private sparse UObject for IsA<T>() type-checks and a Load() that
+    // hydrates to the fully-deserialized object exactly once.
+    public IReadOnlyList<ExportInfo> Exports { get; }
+
+    [Obsolete("Use IPackage.Exports for the preferred path; this is a compatibility shim.", error: false)]
     public Lazy<UObject>[] ExportsLazy { get; }
+
     public bool IsFullyLoaded { get; }
     public bool CanDeserialize { get; }
 
@@ -55,16 +62,11 @@ public interface IPackage
     public Lazy<T>? FindObject<T>(FPackageIndex? index) where T : UObject => FindObject(index) as Lazy<T>;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public UObject? GetExport(int index) => index >= 0 && index < ExportsLazy.Length ? ExportsLazy[index].Value : null;
+    public UObject? GetExport(int index) => index >= 0 && index < Exports.Count ? Exports[index].Load() : null;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IEnumerable<UObject> GetExports(int start, int count) => ExportsLazy.Skip(start).Take(count).Select(export => export.Value);
+    public IEnumerable<UObject> GetExports(int start, int count) => Exports.Skip(start).Take(count).Select(info => info.Load());
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IEnumerable<UObject> GetExports() => ExportsLazy.Select(export => export.Value);
-
-    // Default fallback for direct IPackage implementers. AbstractUePackage
-    // shadows this with a `virtual` so IoPackage/Package overrides win the
-    // dispatch and resolve class names without forcing deserialization.
-    public IEnumerable<ExportInfo> EnumerateExports() => ExportInfo.EnumerateByForcing(this);
+    public IEnumerable<UObject> GetExports() => Exports.Select(info => info.Load());
 }

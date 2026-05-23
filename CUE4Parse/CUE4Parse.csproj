@@ -25,6 +25,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Yggdrasil.Engine.Unreal.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Blake3" Version="2.2.1" />
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageReference Include="FixedMathSharp" Version="2.1.0" />
