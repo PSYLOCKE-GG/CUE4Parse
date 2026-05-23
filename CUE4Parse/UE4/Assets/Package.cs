@@ -244,6 +244,33 @@ namespace CUE4Parse.UE4.Assets
             return -1;
         }
 
+        public override IEnumerable<ExportInfo> EnumerateExports()
+        {
+            for (var i = 0; i < ExportMap.Length; i++)
+            {
+                var export = ExportMap[i];
+                yield return new ExportInfo(this, i, export.ObjectName.Text, ResolveCheapClassName(export.ClassIndex), ExportsLazy[i]);
+            }
+        }
+
+        private string ResolveCheapClassName(FPackageIndex classIndex)
+        {
+            if (classIndex.IsNull) return string.Empty;
+            if (classIndex.IsImport)
+            {
+                var importIdx = -classIndex.Index - 1;
+                if (importIdx >= 0 && importIdx < ImportMap.Length)
+                    return ImportMap[importIdx].ObjectName.Text;
+            }
+            else if (classIndex.IsExport)
+            {
+                var exportIdx = classIndex.Index - 1;
+                if (exportIdx >= 0 && exportIdx < ExportMap.Length)
+                    return ExportMap[exportIdx].ObjectName.Text;
+            }
+            return string.Empty;
+        }
+
         public override ResolvedObject? ResolvePackageIndex(FPackageIndex? index)
         {
             if (index == null || index.IsNull)

@@ -409,6 +409,29 @@ public sealed class IoPackage : AbstractUePackage
         return -1;
     }
 
+    public override IEnumerable<ExportInfo> EnumerateExports()
+    {
+        for (var i = 0; i < ExportMap.Length; i++)
+        {
+            var entry = ExportMap[i];
+            var name = CreateFNameFromMappedName(entry.ObjectName).Text;
+            yield return new ExportInfo(this, i, name, ResolveCheapClassName(entry.ClassIndex), ExportsLazy[i]);
+        }
+    }
+
+    private string ResolveCheapClassName(FPackageObjectIndex classIndex)
+    {
+        if (classIndex.IsScriptImport && _globalData.ScriptObjectEntriesMap.TryGetValue(classIndex, out var scriptEntry))
+            return CreateFNameFromMappedName(scriptEntry.ObjectName).Text;
+        if (classIndex.IsExport)
+        {
+            var classExportIndex = (int) classIndex.AsExport;
+            if (classExportIndex >= 0 && classExportIndex < ExportMap.Length)
+                return CreateFNameFromMappedName(ExportMap[classExportIndex].ObjectName).Text;
+        }
+        return string.Empty;
+    }
+
     public override ResolvedObject? ResolvePackageIndex(FPackageIndex? index)
     {
         if (index == null || index.IsNull)

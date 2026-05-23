@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -120,6 +121,10 @@ public abstract class AbstractUePackage : UObject, IPackage
     public abstract int GetExportIndex(string name, StringComparison comparisonType = StringComparison.Ordinal);
 
     public abstract ResolvedObject? ResolvePackageIndex(FPackageIndex? index);
+
+    // Virtual is required for IoPackage/Package overrides to dispatch through
+    // IPackage-typed call sites; concrete subclasses provide the cheap path.
+    public virtual IEnumerable<ExportInfo> EnumerateExports() => ExportInfo.EnumerateByForcing(this);
 
     public override string ToString() => Name;
 }

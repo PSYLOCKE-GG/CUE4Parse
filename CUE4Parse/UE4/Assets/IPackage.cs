@@ -62,4 +62,9 @@ public interface IPackage
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IEnumerable<UObject> GetExports() => ExportsLazy.Select(export => export.Value);
+
+    // Default fallback for direct IPackage implementers. AbstractUePackage
+    // shadows this with a `virtual` so IoPackage/Package overrides win the
+    // dispatch and resolve class names without forcing deserialization.
+    public IEnumerable<ExportInfo> EnumerateExports() => ExportInfo.EnumerateByForcing(this);
 }
