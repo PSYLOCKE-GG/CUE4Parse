@@ -192,7 +192,6 @@ namespace CUE4Parse.UE4.Assets
             {
                 var export = ExportMap[i];
                 var idx = i;
-                var className = ResolveCheapClassName(export.ClassIndex);
 
                 UObject CreateSparse()
                 {
@@ -215,19 +214,10 @@ namespace CUE4Parse.UE4.Assets
                     obj.PostLoad();
                 }
 
-                exports[idx] = new ExportInfo(this, idx, export.ObjectName.Text, className, CreateSparse, Deserialize);
+                exports[idx] = new ExportInfo(this, idx, export.ObjectName.Text, CreateSparse, Deserialize);
             }
 
-            // Publish Exports before priming sparse so same-package ClassIndex refs
-            // resolve through ResolvedExportObject.ExportInfo → Exports[i] → EnsureSparse(),
-            // which ExportInfo's _sparseConstructing guard handles re-entrantly.
             Exports = exports;
-
-            foreach (var info in exports)
-            {
-                info.EnsureSparse();
-            }
-
             IsFullyLoaded = true;
         }
 
@@ -242,24 +232,6 @@ namespace CUE4Parse.UE4.Assets
             }
 
             return -1;
-        }
-
-        private string ResolveCheapClassName(FPackageIndex classIndex)
-        {
-            if (classIndex.IsNull) return string.Empty;
-            if (classIndex.IsImport)
-            {
-                var importIdx = -classIndex.Index - 1;
-                if (importIdx >= 0 && importIdx < ImportMap.Length)
-                    return ImportMap[importIdx].ObjectName.Text;
-            }
-            else if (classIndex.IsExport)
-            {
-                var exportIdx = classIndex.Index - 1;
-                if (exportIdx >= 0 && exportIdx < ExportMap.Length)
-                    return ExportMap[exportIdx].ObjectName.Text;
-            }
-            return string.Empty;
         }
 
         public override ResolvedObject? ResolvePackageIndex(FPackageIndex? index)

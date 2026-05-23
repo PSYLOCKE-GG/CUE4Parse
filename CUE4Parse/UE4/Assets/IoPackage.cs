@@ -239,7 +239,6 @@ public sealed class IoPackage : AbstractUePackage
             var idx = (int) entry.LocalExportIndex;
             var export = ExportMap[idx];
             var name = CreateFNameFromMappedName(export.ObjectName).Text;
-            var className = ResolveCheapClassName(export.ClassIndex);
             var capturedPos = pos;
             var capturedNewPos = newPos;
 
@@ -265,7 +264,7 @@ public sealed class IoPackage : AbstractUePackage
                 obj.PostLoad();
             }
 
-            exports[idx] = new ExportInfo(this, idx, name, className, CreateSparse, Deserialize);
+            exports[idx] = new ExportInfo(this, idx, name, CreateSparse, Deserialize);
             return (int) export.CookedSerialSize;
         }
 
@@ -286,16 +285,7 @@ public sealed class IoPackage : AbstractUePackage
             ProcessEntry(entry, allExportDataOffset + (int) ExportMap[entry.LocalExportIndex].CookedSerialOffset, true);
         }
 
-        // Publish Exports before priming sparse so same-package ClassIndex refs
-        // resolve through ResolvedExportObject.ExportInfo → Exports[i] → EnsureSparse(),
-        // which ExportInfo's _sparseConstructing guard handles re-entrantly.
         Exports = exports;
-
-        foreach (var info in exports)
-        {
-            info?.EnsureSparse();
-        }
-
         IsFullyLoaded = true;
 
         if (uasset is FStreamArchive { BaseStream: IoStoreEntryStream ioStream })
@@ -424,19 +414,6 @@ public sealed class IoPackage : AbstractUePackage
         }
 
         return -1;
-    }
-
-    private string ResolveCheapClassName(FPackageObjectIndex classIndex)
-    {
-        if (classIndex.IsScriptImport && _globalData.ScriptObjectEntriesMap.TryGetValue(classIndex, out var scriptEntry))
-            return CreateFNameFromMappedName(scriptEntry.ObjectName).Text;
-        if (classIndex.IsExport)
-        {
-            var classExportIndex = (int) classIndex.AsExport;
-            if (classExportIndex >= 0 && classExportIndex < ExportMap.Length)
-                return CreateFNameFromMappedName(ExportMap[classExportIndex].ObjectName).Text;
-        }
-        return string.Empty;
     }
 
     public override ResolvedObject? ResolvePackageIndex(FPackageIndex? index)
