@@ -14,14 +14,17 @@ DLLEXPORT void nTracksHeader_SetDefaultScale(acl::acl_impl::tracks_header* heade
 
 DLLEXPORT void nReadACLData(const acl::compressed_tracks& tracks, FTransform* inRefPoses, FTrackToSkeletonMap* inTrackToSkeletonMap, FTransform* outAtom)
 {
-    if (tracks.get_default_scale() != 0)
-    {
-        ProcessTracks<true>(tracks, inRefPoses, inTrackToSkeletonMap, outAtom);
-    }
-    else
-    {
-        ProcessTracks<false>(tracks, inRefPoses, inTrackToSkeletonMap, outAtom);
-    }
+    // Always resolve stripped ("default") sub-tracks with identity values, matching UE's ACL plugin.
+    // UE's decompression writer (FUE4OutputWriter in ACLDecompressionImpl.h) does NOT override the
+    // default-sub-track modes, so it inherits acl::track_writer's base modes: rotation/translation =
+    // `constant` (identity quat / zero vector), scale = `legacy` (uses get_default_scale()). UE-compressed
+    // clips only strip a sub-track as DEFAULT when its value equals that identity default; any non-zero bind
+    // offset is stored explicitly as a CONSTANT sub-track. The bUseBindPose=true / `variable` path resolves
+    // defaults to the *ref/bind pose* instead, which mis-anchors bones whose animated value is exactly
+    // identity (e.g. Loki's body-baked Scepter_Root, keyed to local-zero so it sits at weapon_r/the hand,
+    // was placed at its 110cm bind offset = his feet). ProcessTracks<false> == FUE4OutputWriter's modes.
+    // (The <true> path is kept below for reference but is no longer selected.)
+    ProcessTracks<false>(tracks, inRefPoses, inTrackToSkeletonMap, outAtom);
 }
 
 DLLEXPORT void nReadCurveACLData(const acl::compressed_tracks& tracks, float* outFloatKeys)
