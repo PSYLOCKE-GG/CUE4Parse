@@ -22,7 +22,7 @@ public class CityHashTests
     [InlineData("FLocalVertexFactory", 11475683181038621400UL)]
     [InlineData("FGPUSkinPassthroughVertexFactory", 7884826846012382956UL)]
     [InlineData("FParticleSpriteVertexFactory", 1936260693301728965UL)]
-    [InlineData("FMeshParticleVertexFactory", 3257961110001812583UL)]
+    [InlineData("FMeshParticleVertexFactory", 7886509962852909359UL)]
     [InlineData("FNiagaraSpriteVertexFactory", 13168243933419104092UL)]
     [InlineData("FNiagaraRibbonVertexFactory", 549208615835106585UL)]
     // Material shader type FHashedNames.
