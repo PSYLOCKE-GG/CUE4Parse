@@ -206,20 +206,26 @@ public class FPropertyTag
         Position = pos;
 #endif
         var finalPos = pos + Size;
+        var strict = Ar.Versions["StrictParsing"];
+        ParserException? readError = null;
+        var observedPos = pos;
         try
         {
             Tag = FPropertyTagType.ReadPropertyTagType(Ar, PropertyType.Text, TagData, ReadType.NORMAL, Size);
+            observedPos = Ar.Position;
 #if DEBUG
-            if (finalPos != Ar.Position)
+            if (finalPos != observedPos)
             {
-                Log.Debug("FPropertyTagType {0} {1} was not read properly, pos {2}, calculated pos {3}", TagData?.ToString() ?? PropertyType.Text, Name.Text, Ar.Position, finalPos);
+                Log.Debug("FPropertyTagType {0} {1} was not read properly, pos {2}, calculated pos {3}", TagData?.ToString() ?? PropertyType.Text, Name.Text, observedPos, finalPos);
             }
 #endif
         }
         catch (ParserException e)
         {
+            readError = e;
+            observedPos = Ar.Position;
 #if DEBUG
-            if (finalPos != Ar.Position)
+            if (finalPos != observedPos)
             {
                 Log.Warning(e, "Failed to read FPropertyTagType {0} {1}, skipping it", TagData?.ToString() ?? PropertyType.Text, Name.Text);
             }
@@ -229,6 +235,16 @@ public class FPropertyTag
         {
             // Always seek to calculated position, no need to crash
             Ar.Position = finalPos;
+        }
+
+        // Strict mode: surface what lenient parsing would silently skip. Thrown after the
+        // finally so the catch above can't re-wrap it, and the position is already restored.
+        if (strict)
+        {
+            if (readError != null)
+                throw new ParserException(Ar, $"Failed to read property '{Name.Text}' ({TagData?.ToString() ?? PropertyType.Text})", readError);
+            if (finalPos != observedPos)
+                throw new ParserException(Ar, $"Property '{Name.Text}' ({TagData?.ToString() ?? PropertyType.Text}) read the wrong number of bytes (read to {observedPos}, expected {finalPos})");
         }
     }
 

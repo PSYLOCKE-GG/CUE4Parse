@@ -4,6 +4,7 @@ using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Objects.Properties;
 using CUE4Parse.UE4.Assets.Objects.Unversioned;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.UObject;
 using Newtonsoft.Json;
 using Serilog;
@@ -55,6 +56,8 @@ public class FStructFallback : AbstractPropertyHolder, IUStruct
         }
         else
         {
+            if (Ar.Versions["StrictParsing"])
+                throw new MappingException(Ar, $"Couldn't resolve instanced struct type '{structType.ResolvedObject?.GetFullName() ?? structType.ToString()}'");
             Log.Warning("Failed to read Struct of type {0}, skipping it", structType.ResolvedObject?.GetFullName());
         }
         return result;

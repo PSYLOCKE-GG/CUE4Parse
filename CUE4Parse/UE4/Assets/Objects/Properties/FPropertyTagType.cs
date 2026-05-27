@@ -10,6 +10,7 @@ using CUE4Parse.GameTypes.OuterWorlds2.Readers;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Assets.Utils;
+using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.i18N;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
@@ -207,12 +208,14 @@ public abstract class FPropertyTagType
 
             _ => null
         };
-#if DEBUG
         if (tagType == null)
         {
+            if (Ar.Versions["StrictParsing"])
+                throw new MappingException(Ar, $"Couldn't resolve property type '{propertyType}'");
+#if DEBUG
             Log.Warning("Couldn't read property type {0} at {1}", propertyType, Ar.Position);
-        }
 #endif
+        }
         return tagType;
     }
 }

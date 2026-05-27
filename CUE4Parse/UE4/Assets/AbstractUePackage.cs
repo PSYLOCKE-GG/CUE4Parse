@@ -94,6 +94,7 @@ public abstract class AbstractUePackage : UObject, IPackage
     {
         var serialOffset = Ar.Position;
         var validPos = serialOffset + serialSize;
+        var strict = Ar.Versions["StrictParsing"];
         try
         {
             obj.Deserialize(Ar, validPos);
@@ -115,10 +116,12 @@ public abstract class AbstractUePackage : UObject, IPackage
         }
         catch (Exception e)
         {
-            if (Globals.FatalObjectSerializationErrors)
-            {
-                throw new ParserException($"Could not read {obj.ExportType} correctly", e);
-            }
+            // Lenient mode logs and drops a deserialization failure here, leaving partial data.
+            // Strict mode (and the existing global) re-throws so the failing field/struct surfaces.
+            // Only thrown failures are surfaced — a clean read that under-consumes the export is
+            // intentionally tolerated, since many export types leave trailing bytes CUE4Parse skips.
+            if (Globals.FatalObjectSerializationErrors || strict)
+                throw new ParserException(Ar, $"Could not read {obj.ExportType} '{obj.Name}' correctly", e);
             Log.Error(e, "Could not read {0} correctly", obj.ExportType);
         }
     }
