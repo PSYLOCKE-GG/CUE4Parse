@@ -151,7 +151,7 @@ namespace CUE4Parse.FileProvider.Vfs
                         if (OnDemandOptions is null)
                             return;
                         var chunkToc = new IoChunkToc(archive);
-                        RegisterVfs(chunkToc, OnDemandOptions);
+                        RegisterVfs(chunkToc);
                         return;
                     default:
                         return;
@@ -185,7 +185,7 @@ namespace CUE4Parse.FileProvider.Vfs
                         if (OnDemandOptions is null)
                             return;
                         var chunkToc = new IoChunkToc(pakOrUtocArchive);
-                        RegisterVfs(chunkToc, OnDemandOptions);
+                        RegisterVfs(chunkToc);
                         return;
                     default:
                         return;
@@ -217,7 +217,7 @@ namespace CUE4Parse.FileProvider.Vfs
                         if (OnDemandOptions is null)
                             return;
                         var chunkToc = new IoChunkToc(pakOrUtocArchive);
-                        RegisterVfs(chunkToc, OnDemandOptions);
+                        RegisterVfs(chunkToc);
                         return;
                     default:
                         return;
@@ -230,20 +230,21 @@ namespace CUE4Parse.FileProvider.Vfs
             }
         }
 
-        public void RegisterVfs(IoChunkToc chunkToc, IoStoreOnDemandOptions options) => RegisterVfsAsync(chunkToc).GetAwaiter().GetResult();
+        public void RegisterVfs(IoChunkToc chunkToc) => RegisterVfsAsync(chunkToc).GetAwaiter().GetResult();
         public async Task RegisterVfsAsync(IoChunkToc chunkToc)
         {
             if (OnDemandOptions is null)
                 return;
 
             var downloader = new IoStoreOnDemandDownloader(OnDemandOptions);
-            foreach (var container in chunkToc.Containers)
+            foreach (var container in chunkToc.OnDemandToc.Containers)
             {
                 try
                 {
-                    var url = $"{chunkToc.Header.ChunksDirectory}/{container.UTocHash.ToString().ToLower()}.utoc";
+                    var url = $"{chunkToc.OnDemandToc.ChunksDirectory}/{container.UTocHash.ToString().ToLower()}.utoc";
                     var data = await downloader.Download(url).ConfigureAwait(false);
-                    PostLoadReader(new IoStoreOnDemandReader(new FStreamArchive($"{container.ContainerName}.utoc", data, Versions), chunkToc, container, downloader));
+                    // added _OnDemand suffix to prevent conflicts with regular IoStore UTOCs
+                    PostLoadReader(new IoStoreOnDemandReader(new FStreamArchive($"{container.ContainerName}_OnDemand.utoc", data, Versions), chunkToc, container, downloader));
                 }
                 catch (Exception e)
                 {
