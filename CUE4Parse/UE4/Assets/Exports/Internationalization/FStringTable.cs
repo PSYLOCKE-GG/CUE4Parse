@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 using CUE4Parse.GameTypes.CodeVein2.Encryption;
+using CUE4Parse.GameTypes.MarvelRivals;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
-using CUE4Parse.Utils;
 
 namespace CUE4Parse.UE4.Assets.Exports.Internationalization;
 
@@ -25,11 +25,11 @@ public class FStringTable
             if (Ar.Game == EGame.GAME_MarvelRivals)
             {
                 if (Ar.Versions.ArbitraryVersion == null ||
-                    Ar.Versions.ArbitraryVersion >= new ArbitraryVersion("1.1.3006564"))
+                    Ar.Versions.ArbitraryVersion >= MarvelRivalsVersions.StringTableEntryTrailingFString)
                 {
                     Ar.SkipFString();
                 }
-                else if (Ar.Versions.ArbitraryVersion >= new ArbitraryVersion("1.1.1933977"))
+                else if (Ar.Versions.ArbitraryVersion >= MarvelRivalsVersions.StringTableEntryTrailingInt)
                 {
                     Ar.Position += 4;
                 }

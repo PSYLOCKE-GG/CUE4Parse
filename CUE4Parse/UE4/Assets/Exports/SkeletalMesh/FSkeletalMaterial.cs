@@ -1,9 +1,9 @@
+using CUE4Parse.GameTypes.MarvelRivals;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Objects.GameplayTags;
 using CUE4Parse.UE4.Objects.Meshes;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
-using CUE4Parse.Utils;
 using Newtonsoft.Json;
 
 namespace CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
@@ -55,7 +55,7 @@ public class FSkeletalMaterial
         switch (Ar.Game)
         {
             case EGame.GAME_MarvelRivals:
-                if (Ar.Versions.ArbitraryVersion != null && Ar.Versions.ArbitraryVersion < new ArbitraryVersion("1.1.1573788")) break;
+                if (Ar.Versions.ArbitraryVersion != null && Ar.Versions.ArbitraryVersion < MarvelRivalsVersions.SkeletalMaterialGameplayTags) break;
                 _ = new FGameplayTagContainer(Ar);
                 break;
             case EGame.GAME_FragPunk or EGame.GAME_DaysGone or EGame.GAME_WorldofJadeDynasty or EGame.GAME_AssaultFireFuture:
