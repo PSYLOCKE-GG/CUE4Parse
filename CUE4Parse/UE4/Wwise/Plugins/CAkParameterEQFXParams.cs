@@ -13,17 +13,6 @@ public class CAkParameterEQFXParams(FWwiseArchive Ar) : IAkPluginParam
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public struct EQModuleParamsOld
-{
-    public AkFilterTypeOld FilterType;
-    public float Gain;
-    public float Frequency;
-    public float QFactor;
-    public bool OnOff;
-}
-
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct EQModuleParamsDynamic
 {
     public float BandDynamicsThresholdDb;
@@ -48,20 +37,20 @@ public struct EQModuleParams
     public EQModuleParamsDynamic Dynamic;
 }
 
-
 public struct AkParametricEQFXParamsOld : IAkParametricEQFXParams
 {
-    public EQModuleParamsOld[] Bands;
+    public AkFilterBand[] Bands;
     public float OutputLevel;
     public bool ProcessLFE;
 
     public AkParametricEQFXParamsOld(FWwiseArchive Ar)
     {
-        Bands = Ar.ReadArray<EQModuleParamsOld>(3);
+        Bands = Ar.ReadArray<AkFilterBand>(3);
         OutputLevel = Ar.Read<float>();
         ProcessLFE = Ar.Read<byte>() != 0;
     }
 }
+
 public struct AkParametricEQFXParams : IAkParametricEQFXParams
 {
     public EQModuleParams[] Bands;
@@ -88,6 +77,15 @@ public struct AkParametricEQFXParams : IAkParametricEQFXParams
             Bands[i].Dynamic = dynamicPart[i];
         }
     }
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct AkFilterParams
+{
+    public AkFilterTypeOld FilterType;
+    public float FilterGain;
+    public float FilterFrequency;
+    public float FilterQFactor;
 }
 
 [JsonConverter(typeof(StringEnumConverter))]

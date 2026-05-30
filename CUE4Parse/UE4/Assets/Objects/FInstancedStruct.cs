@@ -54,6 +54,9 @@ public class FInstancedStruct : IUStruct
             return;
         }
 
+        var strict = Ar.Versions["StrictParsing"];
+        ParserException? readError = null;
+        var unresolved = false;
         try
         {
             var structName = strucindex.ResolvedObject is { } obj ? obj.Name.ToString() : null;
@@ -63,16 +66,26 @@ public class FInstancedStruct : IUStruct
             }
             else
             {
+                unresolved = true;
                 Log.Warning("Failed to read FInstancedStruct of type {0}, skipping it", strucindex.ResolvedObject?.GetFullName());
             }
         }
         catch (ParserException e)
         {
+            readError = e;
             Log.Warning(e, "Failed to read FInstancedStruct of type {0}, skipping it", strucindex.ResolvedObject?.GetFullName());
         }
         finally
         {
             Ar.Position = savedPos + serialSize;
+        }
+
+        if (strict)
+        {
+            if (readError != null)
+                throw new ParserException(Ar, $"Failed to read FInstancedStruct of type '{strucindex.ResolvedObject?.GetFullName() ?? strucindex.ToString()}'", readError);
+            if (unresolved)
+                throw new MappingException(Ar, $"Couldn't resolve FInstancedStruct type '{strucindex.ResolvedObject?.GetFullName() ?? strucindex.ToString()}'");
         }
     }
 }

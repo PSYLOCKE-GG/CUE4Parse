@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -25,7 +27,17 @@ public abstract class AbstractUePackage : UObject, IPackage
     public abstract int ImportMapLength { get; }
     public abstract int ExportMapLength { get; }
 
-    public Lazy<UObject>[] ExportsLazy { get; protected init; }
+    public IReadOnlyList<ExportInfo> Exports { get; protected init; } = Array.Empty<ExportInfo>();
+
+    private Lazy<Lazy<UObject>[]>? _exportsLazyShim;
+
+    [Obsolete("Use IPackage.Exports for the preferred path; this is a compatibility shim.", error: false)]
+    public Lazy<UObject>[] ExportsLazy =>
+        (_exportsLazyShim ??= new Lazy<Lazy<UObject>[]>(BuildExportsLazyShim)).Value;
+
+    private Lazy<UObject>[] BuildExportsLazyShim() =>
+        Exports.Select(info => new Lazy<UObject>(info.Load)).ToArray();
+
     public bool IsFullyLoaded { get; protected init; }
     public bool CanDeserialize
     {
@@ -48,7 +60,7 @@ public abstract class AbstractUePackage : UObject, IPackage
     {
         UObject? obj = null;
         var mappings = owner?.Mappings;
-        var current = struc?.Object?.Value as UStruct;
+        var current = struc?.LoadAsStruct();
 
         while (current != null) // Traverse up until a known one is found
         {
@@ -82,6 +94,7 @@ public abstract class AbstractUePackage : UObject, IPackage
     {
         var serialOffset = Ar.Position;
         var validPos = serialOffset + serialSize;
+        var strict = Ar.Versions["StrictParsing"];
         try
         {
             obj.Deserialize(Ar, validPos);
@@ -103,10 +116,12 @@ public abstract class AbstractUePackage : UObject, IPackage
         }
         catch (Exception e)
         {
-            if (Globals.FatalObjectSerializationErrors)
-            {
-                throw new ParserException($"Could not read {obj.ExportType} correctly", e);
-            }
+            // Lenient mode logs and drops a deserialization failure here, leaving partial data.
+            // Strict mode (and the existing global) re-throws so the failing field/struct surfaces.
+            // Only thrown failures are surfaced — a clean read that under-consumes the export is
+            // intentionally tolerated, since many export types leave trailing bytes CUE4Parse skips.
+            if (Globals.FatalObjectSerializationErrors || strict)
+                throw new ParserException(Ar, $"Could not read {obj.ExportType} '{obj.Name}' correctly", e);
             Log.Error(e, "Could not read {0} correctly", obj.ExportType);
         }
     }
@@ -134,9 +149,25 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
     public virtual ResolvedObject? Outer => null;
     public virtual ResolvedObject? Class => null;
     public virtual ResolvedObject? Super => null;
-    public virtual Lazy<UObject>? Object => ExportIndex >= 0 && ExportIndex < Package.ExportsLazy.Length
-        ? Package.ExportsLazy[ExportIndex]
-        : null;
+
+    public virtual ExportInfo? ExportInfo =>
+        ExportIndex >= 0 && ExportIndex < Package.Exports.Count ? Package.Exports[ExportIndex] : null;
+
+    public virtual UObject? GetDirectObject() => null;
+
+    internal UStruct? LoadAsStruct() => (ExportInfo?.Load() as UStruct) ?? (GetDirectObject() as UStruct);
+
+    [Obsolete("Use ExportInfo / GetDirectObject (or Load() / Load<T>()) for the preferred path; this is a compatibility shim.", error: false)]
+    public virtual Lazy<UObject>? Object
+    {
+        get
+        {
+            var info = ExportInfo;
+            if (info != null) return new Lazy<UObject>(info.Load);
+            var direct = GetDirectObject();
+            return direct != null ? new Lazy<UObject>(() => direct) : null;
+        }
+    }
 
     public string GetFullName(bool includeOuterMostName = true, bool includeClassPackage = false)
     {
@@ -177,10 +208,10 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public T? Load<T>() where T : UObject => Object?.Value as T;
+    public T? Load<T>() where T : UObject => Load() as T;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public UObject? Load() => Object?.Value;
+    public UObject? Load() => ExportInfo?.Load() ?? GetDirectObject();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryLoad<T>([MaybeNullWhen(false)] out T export) where T : UObject
@@ -248,11 +279,11 @@ public class ResolvedLoadedObject(UObject uobject) : ResolvedObject(uobject.Owne
     public override ResolvedObject? Outer => uobject.Outer;
     public override ResolvedObject? Class => uobject.Class;
     public override ResolvedObject? Super => uobject.Super;
-    public override Lazy<UObject> Object => new(() => uobject);
+    public override UObject? GetDirectObject() => uobject;
 }
 
 public class ResolvedPackageObject(IPackage package) : ResolvedObject(package)
 {
     public override FName Name => new(Package.Name);
-    public override Lazy<UObject> Object => new(() => (AbstractUePackage) Package);
+    public override UObject? GetDirectObject() => Package as AbstractUePackage;
 }

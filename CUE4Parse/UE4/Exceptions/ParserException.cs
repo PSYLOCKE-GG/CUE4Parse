@@ -14,6 +14,13 @@ namespace CUE4Parse.UE4.Exceptions
         { }
     }
 
-    public class MappingException(string message) : ParserException(message);
+    public class MappingException : ParserException
+    {
+        public MappingException(string message) : base(message) { }
+
+        public MappingException(FArchive reader, string message, Exception? innerException = null)
+            : base(reader, message, innerException) { }
+    }
+
     public class VersionException(FArchive reader, string message) : ParserException(reader, message);
 }

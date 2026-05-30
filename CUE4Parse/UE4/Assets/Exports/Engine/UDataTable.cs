@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
@@ -11,7 +12,7 @@ namespace CUE4Parse.UE4.Assets.Exports.Engine;
 
 public class UDataTable : UObject
 {
-    public Dictionary<FName, FStructFallback> RowMap { get; private set; }
+    public Dictionary<FName, FStructFallback> RowMap { get; protected set; }
     public string? RowStructName { get; protected set; } // Set by inheritor or during deserialization
 
     public override void Deserialize(FAssetArchive Ar, long validPos)
@@ -30,6 +31,8 @@ public class UDataTable : UObject
             }
             else
             {
+                if (Ar.Versions["StrictParsing"])
+                    throw new MappingException(Ar, $"DataTable '{Name}' has no resolvable RowStruct");
                 Log.Warning("Can't find or load RowStruct type to serialize DataTable");
                 return;
             }

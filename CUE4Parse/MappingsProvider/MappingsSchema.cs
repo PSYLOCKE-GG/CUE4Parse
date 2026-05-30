@@ -171,7 +171,7 @@ namespace CUE4Parse.MappingsProvider
                     break;
                 case FStructProperty struc:
                     var structObj = struc.Struct.ResolvedObject;
-                    Struct = structObj?.Object?.Value as UStruct;
+                    Struct = structObj?.LoadAsStruct();
                     StructType = structObj?.Name.Text;
                     break;
                 case FOptionalProperty optional:
@@ -185,7 +185,7 @@ namespace CUE4Parse.MappingsProvider
         private void ApplyEnum(FProperty prop, FPackageIndex enumIndex)
         {
             var enumObj = enumIndex.ResolvedObject;
-            Enum = enumObj?.Object?.Value as UEnum;
+            Enum = enumObj?.Load<UEnum>();
             EnumName = enumObj?.Name.Text;
             InnerType = prop.ElementSize switch
             {

@@ -134,7 +134,6 @@ public sealed class IoPackage : AbstractUePackage
             // Export map
             uassetAr.Position = summary.ExportMapOffset;
             ExportMap = uasset.ReadArray(Summary.ExportCount, () => new FExportMapEntry(uassetAr));
-            ExportsLazy = new Lazy<UObject>[Summary.ExportCount];
 
             // Export bundle entries
             uassetAr.Position = cellOffsets.CellImportMapOffset;
@@ -183,7 +182,6 @@ public sealed class IoPackage : AbstractUePackage
             // Export map
             uassetAr.Position = summary.ExportMapOffset;
             ExportMap = uasset.ReadArray(Summary.ExportCount, () => new FExportMapEntry(uassetAr));
-            ExportsLazy = new Lazy<UObject>[Summary.ExportCount];
 
             // Export bundles
             uassetAr.Position = summary.ExportBundlesOffset;
@@ -231,34 +229,42 @@ public sealed class IoPackage : AbstractUePackage
         if (ubulk != null) uassetAr.AddPayload(PayloadType.UBULK, Summary.BulkDataStartOffset, ubulk);
         if (uptnl != null) uassetAr.AddPayload(PayloadType.UPTNL, Summary.BulkDataStartOffset, uptnl);
 
-        // Populate lazy exports
+        var exports = new ExportInfo[Summary.ExportCount];
+
         int ProcessEntry(FExportBundleEntry entry, int pos, bool newPos)
         {
             if (entry.CommandType != EExportCommandType.ExportCommandType_Serialize)
                 return 0; // Skip ExportCommandType_Create
 
-            var export = ExportMap[entry.LocalExportIndex];
-            ExportsLazy[entry.LocalExportIndex] = new Lazy<UObject>(() =>
+            var idx = (int) entry.LocalExportIndex;
+            var export = ExportMap[idx];
+            var name = CreateFNameFromMappedName(export.ObjectName).Text;
+            var capturedPos = pos;
+            var capturedNewPos = newPos;
+
+            UObject CreateSparse()
             {
-                // Create
                 var obj = ConstructObject(ResolveObjectIndex(export.ClassIndex), this, export.ObjectFlags);
-                obj.Name = CreateFNameFromMappedName(export.ObjectName).Text;
+                obj.Name = name;
                 obj.Outer = ResolveObjectIndex(export.OuterIndex) as ResolvedExportObject;
                 obj.Outer ??= new ResolvedPackageObject(this);
                 obj.Super = ResolveObjectIndex(export.SuperIndex) as ResolvedExportObject;
                 obj.Template = ResolveObjectIndex(export.TemplateIndex) as ResolvedExportObject;
-                obj.Flags |= export.ObjectFlags; // We give loaded objects the RF_WasLoaded flag in ConstructObject, so don't remove it again in here
+                obj.Flags |= export.ObjectFlags;
+                return obj;
+            }
 
-                // Serialize
+            void Deserialize(UObject obj)
+            {
                 var Ar = (FAssetArchive) uassetAr.Clone();
-                Ar.AbsoluteOffset = newPos ? cookedHeaderSize - allExportDataOffset : (int) export.CookedSerialOffset - pos;
-                Ar.Position = pos;
+                Ar.AbsoluteOffset = capturedNewPos ? cookedHeaderSize - allExportDataOffset : (int) export.CookedSerialOffset - capturedPos;
+                Ar.Position = capturedPos;
                 DeserializeObject(obj, Ar, (long) export.CookedSerialSize);
-                // TODO right place ???
                 obj.Flags |= EObjectFlags.RF_LoadCompleted;
                 obj.PostLoad();
-                return obj;
-            });
+            }
+
+            exports[idx] = new ExportInfo(this, idx, name, CreateSparse, Deserialize);
             return (int) export.CookedSerialSize;
         }
 
@@ -279,6 +285,7 @@ public sealed class IoPackage : AbstractUePackage
             ProcessEntry(entry, allExportDataOffset + (int) ExportMap[entry.LocalExportIndex].CookedSerialOffset, true);
         }
 
+        Exports = exports;
         IsFullyLoaded = true;
 
         if (uasset is FStreamArchive { BaseStream: IoStoreEntryStream ioStream })
@@ -585,7 +592,7 @@ public sealed class IoPackage : AbstractUePackage
         // This means we'll have UScriptStruct's shown as UClass which is wrong.
         // Unfortunately because the mappings format does not distinguish between classes and structs, there's no other way around :(
         public override ResolvedObject Class => new ResolvedLoadedObject(new UScriptClass("Class"));
-        public override Lazy<UObject> Object => new(() => new UScriptClass(Name.Text));
+        public override UObject? GetDirectObject() => new UScriptClass(Name.Text);
     }
 
     public static string GetIoPackageName(FArchive uasset)

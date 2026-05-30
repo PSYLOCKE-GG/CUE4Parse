@@ -117,7 +117,7 @@ namespace CUE4Parse.UE4.Objects.UObject
 
         #region Loading Methods
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T? Load<T>() where T : UExport => Owner?.FindObject(this)?.Value as T;
+        public T? Load<T>() where T : UExport => ResolvedObject?.Load<T>();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryLoad<T>([MaybeNullWhen(false)] out T export) where T : UExport
