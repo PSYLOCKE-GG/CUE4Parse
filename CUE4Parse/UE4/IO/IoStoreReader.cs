@@ -1,16 +1,14 @@
-using System;
 using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider.Objects;
+using CUE4Parse.GameTypes.ProSpi.Encryption.Aes;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.IO.Objects;
@@ -30,14 +28,14 @@ public partial class IoStoreReader : AbstractAesVfsReader
 
     public readonly FIoStoreTocResource TocResource;
     public readonly Dictionary<FIoChunkId, FIoOffsetAndLength>? TocImperfectHashMapFallback;
-    public FIoContainerHeader? ContainerHeader { get; private set; }
-    public Dictionary<FPackageId, GameFile> PackageIdIndex { get; } = [];
+    private Lazy<FIoContainerHeader?> _containerHeader;
+    public FIoContainerHeader? ContainerHeader => _containerHeader.Value;
+    public Dictionary<FPackageId, GameFile> PackageIdIndex { get; private set; } = [];
 
     public override string MountPoint { get; protected set; }
     public sealed override long Length { get; set; }
 
-    private readonly bool _hasDirectoryIndex;
-    public override bool HasDirectoryIndex => _hasDirectoryIndex;
+    public override bool HasDirectoryIndex => TocResource.DirectoryIndexBufferOffset != -1;
     public override FGuid EncryptionKeyGuid => TocResource.Header.EncryptionKeyGuid;
     public override bool IsEncrypted => TocResource.Header.ContainerFlags.HasFlag(EIoContainerFlags.Encrypted);
 
@@ -60,7 +58,6 @@ public partial class IoStoreReader : AbstractAesVfsReader
     {
         Length = tocStream.Length;
         TocResource = new FIoStoreTocResource(tocStream, readOptions);
-        _hasDirectoryIndex = TocResource.DirectoryIndexBuffer != null;
         CompressionMethods = TocResource.CompressionMethods;
 
         List<FArchive> containerStreams;
@@ -214,6 +211,10 @@ public partial class IoStoreReader : AbstractAesVfsReader
                 var compressionBlock = TocResource.CompressionBlocks[blockIndex];
 
                 var rawSize = compressionBlock.CompressedSize.Align(Aes.ALIGN);
+                if (Game is EGame.GAME_eBaseballProSpirit)
+                {
+                    rawSize = (compressionBlock.CompressedSize + ProSpiEncryption.EncryptionDataTrailerSize).Align(Aes.ALIGN);
+                }
                 if (pooledCompressed is null || pooledCompressed.Length < rawSize)
                 {
                     if (pooledCompressed is not null) ArrayPool<byte>.Shared.Return(pooledCompressed);
@@ -490,6 +491,10 @@ public partial class IoStoreReader : AbstractAesVfsReader
                 ref var compressionBlock = ref TocResource.CompressionBlocks[blockIndex];
 
                 var rawSize = compressionBlock.CompressedSize.Align(Aes.ALIGN);
+                if (Game is EGame.GAME_eBaseballProSpirit)
+                {
+                    rawSize = (compressionBlock.CompressedSize + ProSpiEncryption.EncryptionDataTrailerSize).Align(Aes.ALIGN);
+                }
                 size += rawSize;
                 if (pooledCompressed is null || pooledCompressed.Length < rawSize)
                 {
@@ -579,6 +584,10 @@ public partial class IoStoreReader : AbstractAesVfsReader
                 var compressionBlock = TocResource.CompressionBlocks[blockIndex];
 
                 var rawSize = compressionBlock.CompressedSize.Align(Aes.ALIGN);
+                if (Game is EGame.GAME_eBaseballProSpirit)
+                {
+                    rawSize = (compressionBlock.CompressedSize + ProSpiEncryption.EncryptionDataTrailerSize).Align(Aes.ALIGN);
+                }
                 size += rawSize;
                 if (pooledCompressed is null || pooledCompressed.Length < rawSize)
                 {
@@ -864,8 +873,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         watch.Start();
 
         ProcessIndex(pathComparer);
-        TocResource.DirectoryIndexBuffer = null;
-        ContainerHeader = ReadContainerHeader();
+        _containerHeader = new Lazy<FIoContainerHeader?>(ReadContainerHeader);
 
         if (Globals.LogVfsMounts)
         {
@@ -883,8 +891,8 @@ public partial class IoStoreReader : AbstractAesVfsReader
 
     private void ProcessIndex(StringComparer pathComparer)
     {
-        if (!HasDirectoryIndex || TocResource.DirectoryIndexBuffer == null) throw new ParserException("No directory index");
-        using var directoryIndex = new GenericBufferReader(DecryptIfEncrypted(TocResource.DirectoryIndexBuffer, IsEncrypted, true));
+        if (!HasDirectoryIndex || TocResource.GetDirectoryIndexBuffer() is not { } indexBuffer) throw new ParserException("No directory index");
+        using var directoryIndex = new GenericBufferReader(DecryptIfEncrypted(indexBuffer, IsEncrypted, true));
 
         string mountPoint;
         try
@@ -964,7 +972,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         }
     }
 
-    public override byte[] MountPointCheckBytes() => TocResource.DirectoryIndexBuffer ?? new byte[MAX_MOUNTPOINT_TEST_LENGTH];
+    public override byte[] MountPointCheckBytes() => TocResource.GetDirectoryIndexBuffer() ?? new byte[MAX_MOUNTPOINT_TEST_LENGTH];
     protected override byte[] ReadAndDecrypt(int length) => throw new InvalidOperationException("IoStore can't read bytes without context"); //ReadAndDecrypt(length, Ar, IsEncrypted);
 
     public override void Dispose()

@@ -1,4 +1,3 @@
-using System;
 using CUE4Parse.GameTypes._2XKO.Assets.Exports;
 using CUE4Parse.GameTypes.Borderlands4.Assets.Objects;
 using CUE4Parse.GameTypes.Brickadia.Objects;
@@ -31,6 +30,7 @@ using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Objects.Properties;
 using CUE4Parse.UE4.Assets.Objects.Unversioned;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.ChaosCaching;
 using CUE4Parse.UE4.Objects.ControlRig;
 using CUE4Parse.UE4.Objects.Core.Math;
@@ -57,6 +57,7 @@ using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Objects.WorldCondition;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
+using Serilog;
 using FRawUIntStruct = CUE4Parse.UE4.Objects.StructUtils.FRawStruct<uint>;
 
 namespace CUE4Parse.UE4.Assets.Objects;
@@ -87,6 +88,7 @@ public class FScriptStruct
             "NavAgentSelector" => type == ReadType.ZERO ? new FNavAgentSelector() : Ar.Read<FNavAgentSelector>(),
             "SmartName" => type == ReadType.ZERO ? new FSmartName() : new FSmartName(Ar),
             "NameCurveKey" => type == ReadType.ZERO ? new FNameCurveKey() : new FNameCurveKey(Ar),
+            "StringCurveKey" => type == ReadType.ZERO ? new FStringCurveKey() : new FStringCurveKey(Ar),
             "RichCurveKey" => type == ReadType.ZERO ? new FRichCurveKey() : Ar.Read<FRichCurveKey>(),
             "SimpleCurveKey" => type == ReadType.ZERO ? new FSimpleCurveKey() : Ar.Read<FSimpleCurveKey>(),
             "ScalarMaterialInput" => type == ReadType.ZERO ? new FMaterialInput<float>() : new FMaterialInput<float>(Ar),
@@ -100,6 +102,8 @@ public class FScriptStruct
             "PerPlatformInt" => type == ReadType.ZERO ? new FPerPlatformInt() : new FPerPlatformInt(Ar),
             "PerPlatformFrameRate" => type == ReadType.ZERO ? new FPerPlatformFrameRate() : new FPerPlatformFrameRate(Ar),
             "PerPlatformFString" => type == ReadType.ZERO ? new FPerPlatformFString() : new FPerPlatformFString(Ar),
+            "PerPlatformERigLogicFloatingPointType" => type == ReadType.ZERO ? new FPerPlatformERigLogicFloatingPointType() : new FPerPlatformERigLogicFloatingPointType(Ar),
+            "PerPlatformERigLogicCalculationType" => type == ReadType.ZERO ? new FPerPlatformERigLogicCalculationType() : new FPerPlatformERigLogicCalculationType(Ar),
             "PerQualityLevelInt" => type == ReadType.ZERO ? new FPerQualityLevelInt() : new FPerQualityLevelInt(Ar),
             "PerQualityLevelFloat" => type == ReadType.ZERO ? new FPerQualityLevelFloat() : new FPerQualityLevelFloat(Ar),
             "PannerDetails" => new FPannerDetails(Ar),
@@ -192,7 +196,7 @@ public class FScriptStruct
             "Matrix44f" => type == ReadType.ZERO ? new FMatrix() : new FMatrix(Ar, false),
             "InstancedStruct" => new FInstancedStruct(Ar),
             "InstancedStructContainer" => new FInstancedStructContainer(Ar),
-            "InstancedPropertyBag" => new FInstancedPropertyBag(Ar),
+            "InstancedPropertyBag" or "RigVMPropertyBag"=> new FInstancedPropertyBag(Ar),
             "InstancedOverridablePropertyBag" => new FInstancedOverridablePropertyBag(Ar),
             "WorldConditionQueryDefinition" => new FWorldConditionQueryDefinition(Ar),
             "UniversalObjectLocatorFragment" => type == ReadType.ZERO ? new FUniversalObjectLocatorFragment() : new FUniversalObjectLocatorFragment(Ar),
@@ -205,6 +209,7 @@ public class FScriptStruct
             "PCGPointArray" => new FPCGPointArray(Ar),
             "CacheEventTrack" => type == ReadType.ZERO ? new FStructFallback() : new FCacheEventTrack(Ar),
             "StateTreeInstanceData" => type == ReadType.ZERO ? new FStructFallback() : new FStateTreeInstanceData(Ar),
+            "InstancedStructArray" => type == ReadType.ZERO ? new FInstancedStructArray() : new FInstancedStructArray(Ar),
             "DataCacheDuplicatedObjectData" => new FDataCacheDuplicatedObjectData(Ar),
             "EdGraphPinType" => new FEdGraphPinType(Ar),
             "ControlRigOverrideContainer" => type == ReadType.ZERO ? new FControlRigOverrideContainer() : new FControlRigOverrideContainer(Ar),
@@ -218,6 +223,7 @@ public class FScriptStruct
             "ConnectivityCube" => new FConnectivityCube(Ar),
             "FortActorRecord" => new FFortActorRecord(Ar),
             "GameplayEventFunction" => new FGameplayEventFunction(Ar),
+            "GameplayEventDescriptor" => new FGameplayEventDescriptor(Ar),
 
             // Train Sim World
             "DistanceQuantity" => Ar.Read<FDistanceQuantity>(),
@@ -268,6 +274,7 @@ public class FScriptStruct
 
             "WaynetNode" when Ar.Game == EGame.GAME_Gothic1Remake => new FWaynetNode(Ar),
             "WaynetPath" when Ar.Game == EGame.GAME_Gothic1Remake => new FWaynetPath(Ar),
+            "AlkimiaLightweightStaticMeshProxyDesc" when Ar.Game == EGame.GAME_Gothic1Remake => new FAlkimiaLightweightStaticMeshProxyDesc(Ar),
 
             "BrickStudGroup" when Ar.Game == EGame.GAME_Brickadia => new FBrickStudGroup(Ar),
             "BRGuid" when Ar.Game == EGame.GAME_Brickadia => type == ReadType.ZERO ? new FGuid() : Ar.Read<FGuid>(),
@@ -358,7 +365,7 @@ public class FScriptStruct
 
             "EncVector" when Ar.Game is EGame.GAME_DeltaForce => Ar.Read<FVector>(),
 
-            "MercunaUsageSpec" when Ar.Game is EGame.GAME_PUBGBlackBudget => new FStructFallback(Ar, structName, FRawHeader.FullRead, ReadType.RAW),
+            "MercunaUsageSpec" => new FStructFallback(Ar, structName, FRawHeader.FullRead, ReadType.RAW),
             "MercunaUsageTypes" when Ar.Game is EGame.GAME_PUBGBlackBudget => type == ReadType.ZERO ? new FRawUIntStruct() : Ar.Read<FRawUIntStruct>(),
 
             // Palia
@@ -386,6 +393,7 @@ public class FScriptStruct
 
             // Windrose
             "R5CollisionApproximation" => new FStructFallback(Ar, structName, FRawHeader.FullRead, ReadType.RAW),
+            "R5SoftAssetPath" => new FStructFallback(Ar, structName, new FRawHeader([(0, 1)], ERawHeaderFlags.RawProperties), ReadType.RAW),
 
             // Armatus
             "AnimMontageContainer" => new FStructFallback(Ar, structName, FRawHeader.FullRead, ReadType.RAW),
@@ -416,8 +424,13 @@ public class FScriptStruct
             "PerPlatformUObject" or "PerPlatformSoftObjectPtr" when Ar.Game is EGame.GAME_Lego2KDrive => type == ReadType.ZERO ? new FPerPlatformSoftObject() : new FPerPlatformSoftObject(Ar),
             "PerPlatformMediaSource" when Ar.Game is EGame.GAME_Lego2KDrive => type == ReadType.ZERO ? new FPerPlatformUObject() : new FPerPlatformUObject(Ar),
 
-            "TtScalableShadowFloat" or "TtScalableLightFloat" => new FStructFallback(Ar, structName, FRawHeader.FullRead, ReadType.RAW),
-            "TtScalableShadowBool" => new FStructFallback(Ar, structName, new FRawHeader([(0,1)])),
+            "TtScalableShadowFloat" or "TtScalableLightFloat" when Ar.Game is EGame.GAME_LEGOBatmanLegacyoftheDarkKnight => new FStructFallback(Ar, structName, FRawHeader.FullRead, ReadType.RAW),
+            "TtScalableShadowBool" when Ar.Game is EGame.GAME_LEGOBatmanLegacyoftheDarkKnight => new FStructFallback(Ar, structName, new FRawHeader([(0, 1)])),
+
+            "ItemStack" when Ar.Game is EGame.GAME_Fatekeeper => new FFixedSizeStruct(Ar, 158),
+
+            // Orcs Must Die Deathtrap
+            "RDialogueFactValue" => new FFixedSizeStruct(Ar, 13),
 
             _ => Ar.Game switch
             {
@@ -437,4 +450,91 @@ public class FScriptStruct
     }
 
     public override string ToString() => $"{StructType} ({StructType.GetType().Name})";
+
+    public static FScriptStruct? ReadInstancedStruct(FAssetArchive Ar)
+    {
+        var structType = new FPackageIndex(Ar);
+        return ReadInstancedStruct(Ar, structType);
+    }
+
+    public static FScriptStruct? ReadInstancedStruct(FAssetArchive Ar, FPackageIndex structType)
+    {
+        var serialSize = Ar.Read<int>();
+        var savedPos = Ar.Position;
+        if (structType is null || structType.IsNull)
+        {
+            Ar.Position = savedPos + serialSize;
+            return null;
+        }
+
+        FScriptStruct? result = null;
+        Exception? readError = null;
+        var unresolved = false;
+        try
+        {
+            var structName = structType.ResolvedObject is { } obj ? obj.Name.ToString() : null;
+            if (structType.TryLoad<UStruct>(out var struc) || structName != null)
+            {
+                result = new FScriptStruct(Ar, structName, struc, ReadType.NORMAL);
+            }
+            else
+            {
+                unresolved = true;
+                Log.Warning("Failed to load FInstancedStruct of type {0}, skipping it", structType.ResolvedObject?.GetFullName());
+            }
+        }
+        catch (Exception e)
+        {
+            readError = e;
+            Log.Warning(e, "Failed to read FInstancedStruct of type {0}, skipping it", structType.ResolvedObject?.GetFullName());
+        }
+        finally
+        {
+            Ar.Position = savedPos + serialSize;
+        }
+
+        if (Ar.Versions["StrictParsing"])
+        {
+            if (readError != null)
+                throw new ParserException(Ar, $"Failed to read FInstancedStruct of type '{structType.ResolvedObject?.GetFullName() ?? structType.ToString()}'", readError);
+            if (unresolved)
+                throw new MappingException(Ar, $"Couldn't resolve FInstancedStruct type '{structType.ResolvedObject?.GetFullName() ?? structType.ToString()}'");
+        }
+
+        return result;
+    }
+
+    public static FScriptStruct? ReadInstancedStructWithoutSerialSize(FAssetArchive Ar)
+    {
+        var structType = new FPackageIndex(Ar);
+        return ReadInstancedStructWithoutSerialSize(Ar, structType);
+    }
+
+    public static FScriptStruct? ReadInstancedStructWithoutSerialSize(FAssetArchive Ar, FPackageIndex structType)
+    {
+        FScriptStruct? result = null;
+        if (structType is null || structType.IsNull)
+        {
+            return result;
+        }
+
+        try
+        {
+            var structName = structType.ResolvedObject is { } obj ? obj.Name.ToString() : null;
+            if (structType.TryLoad<UStruct>(out var struc) || structName != null)
+            {
+                result = new FScriptStruct(Ar, structName, struc, ReadType.NORMAL);
+            }
+            else
+            {
+                throw new ParserException($"Failed to load FInstancedStruct of type {structType.ResolvedObject?.GetFullName()}");
+            }
+        }
+        catch (Exception e)
+        {
+            throw new ParserException($"Failed to read FInstancedStruct of type {structType.ResolvedObject?.GetFullName()}", e);
+        }
+
+        return result;
+    }
 }

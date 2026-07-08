@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Exports.ControlRig.Rigs;
 using CUE4Parse.UE4.Assets.Readers;
@@ -44,7 +42,7 @@ public class URigHierarchy : UObject
             var uncompressedBytes = new byte[uncompressedSize];
             if (bStoreCompressedBytes)
             {
-                OodleHelper.Decompress(compressedBytes, 0, compressedBytes.Length, uncompressedBytes, 0, uncompressedBytes.Length);
+                Compression.Compression.Decompress(compressedBytes, 0, compressedBytes.Length, uncompressedBytes, 0, uncompressedBytes.Length, CompressionMethod.Oodle, Ar);
             }
 
             using var baseArchive = new FByteArchive("Archive for elements", bStoreCompressedBytes ? uncompressedBytes : compressedBytes, Ar.Versions);

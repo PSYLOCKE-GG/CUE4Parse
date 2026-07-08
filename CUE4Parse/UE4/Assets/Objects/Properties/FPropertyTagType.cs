@@ -1,5 +1,4 @@
-using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
@@ -105,17 +104,6 @@ public abstract class FPropertyTagType
         }
     }
 
-    private Array CreateArray(Type type, List<FPropertyTagType> properties)
-    {
-        var contentType = type.GetElementType()!;
-        var result = Array.CreateInstance(contentType, properties.Count);
-        for (var i = 0; i < properties.Count; i++)
-        {
-            result.SetValue(properties[i].GetValue(contentType), i);
-        }
-        return result;
-    }
-
     private IDictionary CreateDictionary(Type type, Dictionary<FPropertyTagType, FPropertyTagType?> properties)
     {
         var typeArgs = type.GetGenericArguments();
@@ -129,6 +117,17 @@ public abstract class FPropertyTagType
             if (key == null) continue;
             var value = kv.Value?.GetValue(valueType);
             result[key] = value;
+        }
+        return result;
+    }
+
+    private Array CreateArray(Type type, List<FPropertyTagType> properties)
+    {
+        var contentType = type.GetElementType()!;
+        var result = Array.CreateInstance(contentType, properties.Count);
+        for (var i = 0; i < properties.Count; i++)
+        {
+            result.SetValue(properties[i].GetValue(contentType), i);
         }
         return result;
     }
@@ -190,6 +189,7 @@ public abstract class FPropertyTagType
             "SoftClassProperty" => new SoftObjectProperty(Ar, type),
             "SoftObjectProperty" => new SoftObjectProperty(Ar, type),
             "StrProperty" => new StrProperty(Ar, type),
+            "AnsiStrProperty" => new AnsiStrProperty(Ar, type),
             "Utf8StrProperty" => new Utf8StrProperty(Ar, type),
             "StructProperty" => new StructProperty(Ar, tagData, type),
             "TextProperty" => new TextProperty(Ar, type),
@@ -198,8 +198,9 @@ public abstract class FPropertyTagType
             "UInt64Property" => new UInt64Property(Ar, type),
             "WeakObjectProperty" => new WeakObjectProperty(Ar, type),
             "OptionalProperty" => new OptionalProperty(Ar, tagData, type),
+            "ReferenceProperty" => new SoftObjectProperty(Ar, type),
             "VerseStringProperty" => new VerseStringProperty(Ar, type),
-            "VerseFunctionProperty" => new ObjectProperty(Ar, type),
+            "VerseFunctionProperty" => new DelegateProperty(Ar, type),
             "VerseDynamicProperty" => new ObjectProperty(Ar, type), // idk, but for now read as ObjectProperty
             "VerseClassProperty" => new VerseClassProperty(Ar, type),
 

@@ -1,7 +1,4 @@
-﻿using System;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse.UE4.Assets.Exports.Component.Landscape;
@@ -32,8 +29,8 @@ internal class FLandscapeComponentDataInterface {
     private readonly object _dataLock = new();
 
     private bool _bEnsuredWeightmapTexCache;
-    
-    internal unsafe FLandscapeComponentDataInterface(ULandscapeComponent inComponent, int inMipLevel) 
+
+    internal unsafe FLandscapeComponentDataInterface(ULandscapeComponent inComponent, int inMipLevel)
     {
         Component = inComponent;
         HeightMipData = null;
@@ -61,7 +58,7 @@ internal class FLandscapeComponentDataInterface {
         ComponentSizeVerts = (Component.ComponentSizeQuads + 1) >> MipLevel;
         SubsectionSizeVerts = (Component.SubsectionSizeQuads + 1) >> MipLevel;
         ComponentNumSubsections = Component.NumSubsections;
-        
+
         if (MipLevel < heightMapTexture.PlatformData.Mips.Length) {
             Trace.Assert(heightMapTexture.Owner != null, "heightMapTexture.Owner != null");
             var platform = heightMapTexture.Owner!.Provider!.Versions.Platform;
@@ -76,10 +73,18 @@ internal class FLandscapeComponentDataInterface {
             if (bulkData == null)
                 throw new InvalidOperationException("height map bulk data is null");
 
-            if (platform == ETexturePlatform.XboxAndPlaystation)
-                bulkData = PlatformDeswizzlers.DeswizzleXBPS(bulkData, mip, formatInfo);
-            else if (platform == ETexturePlatform.NintendoSwitch)
-                bulkData = PlatformDeswizzlers.GetDeswizzledData(bulkData, mip, formatInfo);
+            switch (platform)
+            {
+                case ETexturePlatform.XboxAndPlaystation4:
+                    bulkData = PlatformDeswizzlers.DeswizzleXBPS4(bulkData, mip, formatInfo);
+                    break;
+                case ETexturePlatform.NintendoSwitch:
+                    bulkData = PlatformDeswizzlers.GetDeswizzledData(bulkData, mip, formatInfo);
+                    break;
+                case ETexturePlatform.Playstation5 when heightMapTexture.CookPlatformTilingSettings is not ETextureCookPlatformTilingSettings.TCPTS_DoNotTile:
+                    bulkData = PlatformDeswizzlers.DeswizzlePS5(bulkData, mip, formatInfo);
+                    break;
+            }
 
             var ar = new FStreamArchive("HeightMap",
                 new MemoryStream(bulkData ?? throw new InvalidOperationException("height map bulk data is null")));
@@ -97,7 +102,7 @@ internal class FLandscapeComponentDataInterface {
         }
     }
 
-    private bool GetWeightMapIndex(FWeightmapLayerAllocationInfo allocationInfo, out int LayerIdx) 
+    private bool GetWeightMapIndex(FWeightmapLayerAllocationInfo allocationInfo, out int LayerIdx)
     {
         LayerIdx = -1;
         FWeightmapLayerAllocationInfo[] componentWeightmapLayerAllocations =
@@ -126,7 +131,7 @@ internal class FLandscapeComponentDataInterface {
         return true;
     }
 
-    public bool EnsureWeightmapTextureDataCache() 
+    public bool EnsureWeightmapTextureDataCache()
     {
         var allocationInfos = Component.GetWeightmapLayerAllocations();
         for (var index = 0; index < allocationInfos.Length; index++) {
@@ -144,7 +149,7 @@ internal class FLandscapeComponentDataInterface {
         return true;
     }
 
-    private bool GetWeightmapTextureData(int /*ULandscapeLayerInfoObject*/ layerIdx, out byte[]? outData) 
+    private bool GetWeightmapTextureData(int /*ULandscapeLayerInfoObject*/ layerIdx, out byte[]? outData)
     {
         if (_bEnsuredWeightmapTexCache) {
             // can read without lock
@@ -180,8 +185,8 @@ internal class FLandscapeComponentDataInterface {
         var mip = weightTexture.GetMip(MipLevel);
 
         var bulkData = mip.BulkData.Data;
-        if (platform == ETexturePlatform.XboxAndPlaystation)
-            bulkData = PlatformDeswizzlers.DeswizzleXBPS(bulkData!, mip, formatInfo);
+        if (platform == ETexturePlatform.XboxAndPlaystation4)
+            bulkData = PlatformDeswizzlers.DeswizzleXBPS4(bulkData!, mip, formatInfo);
         else if (platform == ETexturePlatform.NintendoSwitch)
             bulkData = PlatformDeswizzlers.GetDeswizzledData(bulkData!, mip, formatInfo);
 

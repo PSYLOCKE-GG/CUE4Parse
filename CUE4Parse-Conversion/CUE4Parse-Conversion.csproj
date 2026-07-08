@@ -2,32 +2,26 @@
 
   <PropertyGroup>
     <RootNamespace>CUE4Parse_Conversion</RootNamespace>
-    <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <TargetFramework>net9.0</TargetFramework>
-    <IsPublishable>false</IsPublishable>
-    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/FabianFG/CUE4Parse</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/FabianFG/CUE4Parse.git</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <Version>1.2.1</Version>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	<Description>CUE4Parse Conversion</Description>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AssetRipper.TextureDecoder" Version="2.6.1" />
-    <PackageReference Include="SharpGLTF.Core" Version="1.0.6" />
-    <PackageReference Include="SharpGLTF.Toolkit" Version="1.0.6" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
-    <PackageReference Include="SkiaSharp" Version="3.119.2" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.2" />
+    <PackageReference Include="AssetRipper.TextureDecoder" />
+    <PackageReference Include="SharpGLTF.Core" />
+    <PackageReference Include="SharpGLTF.Toolkit" />
+    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\CUE4Parse\CUE4Parse.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Resources\crunch.dll" />
+    <EmbeddedResource Include="Resources\crunch.dll" />
   </ItemGroup>
 
   <!-- Detex natives -->
@@ -63,7 +57,7 @@
       <TargetPath>runtimes/osx-arm64/native/libdetex.dylib</TargetPath>
     </None>
   </ItemGroup>
-  
+
   <!-- Tegra Swizzle natives -->
   <ItemGroup>
     <None Include="Resources\tegra_swizzle\tegra_swizzle-windows-x86_64\tegra_swizzle.dll">
@@ -97,4 +91,5 @@
       <TargetPath>runtimes/osx-arm64/native/libtegra_swizzle.dylib</TargetPath>
     </None>
   </ItemGroup>
+
 </Project>

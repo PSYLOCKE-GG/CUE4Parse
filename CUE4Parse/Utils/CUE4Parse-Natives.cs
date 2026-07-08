@@ -1,9 +1,8 @@
-using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace CUE4Parse.Utils; 
+namespace CUE4Parse.Utils;
 
 public static unsafe class CUE4ParseNatives
 {

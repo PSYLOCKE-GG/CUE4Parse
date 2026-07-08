@@ -19,6 +19,15 @@ public static class Aes
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] Decrypt(this ArraySegment<byte> encrypted, FAesKey key)
+    {
+        if (encrypted.Array is null) throw new ArgumentException("ArraySegment has no backing array.", nameof(encrypted));
+
+        using var decryptor = Provider.CreateDecryptor(key.Key, null);
+        return decryptor.TransformFinalBlock(encrypted.Array, encrypted.Offset, encrypted.Count);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] Decrypt(this byte[] encrypted, int beginOffset, int count, FAesKey key)
     {
         using var decryptor = Provider.CreateDecryptor(key.Key, null);

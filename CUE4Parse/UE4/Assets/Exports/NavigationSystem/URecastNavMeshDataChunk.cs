@@ -1,10 +1,10 @@
+using CUE4Parse.UE4.Assets.Exports.NavigationSystem;
+using CUE4Parse.UE4.Assets.Exports.NavigationSystem.Detour;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
 using Serilog;
-using CUE4Parse.UE4.Assets.Exports.NavigationSystem.Detour;
-using CUE4Parse.UE4.Assets.Exports.NavigationSystem;
-using CUE4Parse.UE4.Readers;
 
 namespace CUE4Parse.UE4.Objects.NavigationSystem.NavMesh;
 
@@ -20,7 +20,7 @@ public class URecastNavMeshDataChunk : Assets.Exports.UObject
 
         NavMeshVersion = Ar.Read<ENavMeshVersion>();
         var recastNavMeshSizePos = Ar.Position;
-        var recastNavMeshSizeBytes = Ar.Read<long>();
+        var recastNavMeshSizeBytes = Ar.Game != EGame.GAME_WutheringWaves ? Ar.Read<long>() : 8;
 
         if (NavMeshVersion < ENavMeshVersion.NAVMESHVER_MIN_COMPATIBLE)
         {

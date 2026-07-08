@@ -1,4 +1,3 @@
-using System;
 using CUE4Parse.GameTypes.SuicideSquad.Objects;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Readers;
@@ -102,16 +101,29 @@ public class FPositionVertexBuffer
 
         Stride = Ar.Read<int>();
         NumVertices = Ar.Read<int>();
-        if (Ar.Game == EGame.GAME_Valorant_PRE_11_2)
+
+        if (Ar.Game is EGame.GAME_Valorant_PRE_11_2 or EGame.GAME_NeedForSpeedMobile || (Ar.Game is EGame.GAME_ArenaBreakoutInfinite or GAME_ArenaBreakoutMobile && Stride == 8))
         {
-            bool bUseFullPrecisionPositions = Ar.ReadBoolean();
+            bool bUseFullPrecisionPositions = Ar.Game is not EGame.GAME_ArenaBreakoutInfinite and not GAME_ArenaBreakoutMobile && Ar.ReadBoolean();
             var bounds = new FBoxSphereBounds(Ar);
             if (!bUseFullPrecisionPositions)
             {
-                var vertsHalf = Ar.ReadBulkArray<FVector3SignedShortScale>();
-                Verts = new FVector[vertsHalf.Length];
-                for (int i = 0; i < vertsHalf.Length; i++)
-                    Verts[i] = vertsHalf[i] * bounds.BoxExtent + bounds.Origin;
+                switch (Stride)
+                {
+                    case 8:
+                    {
+                        var vertsHalf = Ar.ReadBulkArray<FVector3SignedShortScale>();
+                        Verts = new FVector[vertsHalf.Length];
+                        for (var i = 0; i < vertsHalf.Length; i++)
+                            Verts[i] = vertsHalf[i] * bounds.BoxExtent + bounds.Origin;
+                        break;
+                    }
+                    case 12:
+                        Verts = Ar.ReadBulkArray<FVector>();
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException($"Unknown stride {Stride} for FPositionVertexBuffer");
+                }
                 return;
             }
         }

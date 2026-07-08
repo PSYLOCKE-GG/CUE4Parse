@@ -1,7 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
+using System.Buffers.Binary;
 using CUE4Parse.Compression;
+using CUE4Parse.GameTypes.ABI.Encryption.Aes;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Readers;
@@ -24,6 +23,8 @@ public enum EPakFileVersion
     PakFile_Version_PathHashIndex = 10,
     PakFile_Version_Fnv64BugFix = 11,
     PakFile_Version_Utf8PakDirectory = 12,
+    PakFile_Version_SortedDirectoryIndex = 13, // FullDirectoryIndex stored as a flat FPakFlatDirectoryIndex.
+    PakFile_Version_PakchunkIndex = 14, // PakchunkIndex stored in the trailer so it doesn't have to be derived from the filename.
 
     PakFile_Version_Last,
     PakFile_Version_Invalid,
@@ -45,7 +46,9 @@ public partial class FPakInfo
     public const uint PAK_FILE_MAGIC_CrystalOfAtlan = 0x22ce976a;
     public const uint PAK_FILE_MAGIC_PromiseMascotAgency = 0x11adde11;
     public const uint PAK_FILE_MAGIC_ArenaBreakoutInfinite = 0x53647586;
+    public const uint PAK_FILE_MAGIC_ArenaBreakoutMobile = 0x57647587;
     public const uint PAK_FILE_MAGIC_AssaultFireFuture = 0x4F6FAE86;
+    public const uint PAK_FILE_MAGIC_Back4Blood = 0x18772;
 
     public const int COMPRESSION_METHOD_NAME_LEN = 32;
 
@@ -61,6 +64,7 @@ public partial class FPakInfo
     public readonly bool IndexIsFrozen;
     public readonly FGuid EncryptionKeyGuid;
     public readonly List<CompressionMethod> CompressionMethods;
+    public readonly int PakchunkIndex = -1; // INDEX_NONE
     public readonly byte[] CustomEncryptionData;
 
     private FPakInfo(FArchive Ar, OffsetsToTry offsetToTry)
@@ -101,6 +105,41 @@ public partial class FPakInfo
                 CompressionMethod.LZ4, CompressionMethod.Zstd
             ];
             return;
+        }
+
+        if (Ar.Game is GAME_ArenaBreakoutMobile)
+        {
+            Magic = Ar.Read<uint>();
+            // Global or maybe older versions
+            if (Magic == PAK_FILE_MAGIC_ArenaBreakoutInfinite)
+            {
+                EncryptionKeyGuid = default;
+                CustomEncryptionData = [Ar.Read<byte>()];
+                IndexSize = Ar.Read<long>();
+                IndexOffset = Ar.Read<long>();
+                IndexHash = new FSHAHash(Ar);
+                Version = Ar.Read<EPakFileVersion>();
+                EncryptedIndex = true;
+                goto beforeCompression;
+            }
+
+            // Chinese mobile version
+            if (Magic == PAK_FILE_MAGIC_ArenaBreakoutMobile)
+            {
+                EncryptionKeyGuid = default;
+                CustomEncryptionData = [Ar.Read<byte>()];
+                var encryptedIndexInfo = Ar.ReadBytes(16);
+                var indexInfo = new byte[16];
+                Buffer.BlockCopy(encryptedIndexInfo, 8, indexInfo, 0, 8);
+                Buffer.BlockCopy(encryptedIndexInfo, 0, indexInfo, 8, 8);
+                ABIDecryption.DecryptAbiMobilePakInfo(indexInfo);
+                IndexOffset = BinaryPrimitives.ReadInt64LittleEndian(indexInfo);
+                IndexSize = BinaryPrimitives.ReadInt64LittleEndian(indexInfo.AsSpan(8));
+                IndexHash = new FSHAHash(Ar);
+                Version = Ar.Read<EPakFileVersion>();
+                EncryptedIndex = true;
+                goto beforeCompression;
+            }
         }
 
         if (Ar.Game == EGame.GAME_ArenaBreakoutInfinite)
@@ -188,6 +227,42 @@ public partial class FPakInfo
             goto beforeCompression;
         }
 
+        if (Ar.Game is EGame.GAME_Back4Blood) // Reversed by Spiritovod
+        {
+            Version = Ar.Read<EPakFileVersion>();
+            Magic = Ar.Read<uint>();
+            if (Magic != PAK_FILE_MAGIC_Back4Blood) return;
+            EncryptedIndex = Ar.Read<byte>() != 0;
+            EncryptionKeyGuid = Ar.Read<FGuid>();
+            IndexOffset = Ar.Read<long>();
+            IndexSize = Ar.Read<long>();
+            IndexHash = new FSHAHash(Ar);
+
+            if (IndexSize > Ar.Length || IndexSize < 0)
+            {
+                Ar.Position = startPosition + 4;
+                Magic = Ar.Read<uint>();
+                if (Magic != PAK_FILE_MAGIC_Back4Blood) return;
+                EncryptionKeyGuid = default;
+                Ar.Position += 16;
+                EncryptedIndex = Ar.Read<byte>() != 0;
+                IndexHash = new FSHAHash(Ar);
+                IndexSize = Ar.Read<long>();
+                IndexOffset = Ar.Read<long>();
+            }
+
+            if (Ar.Position < Ar.Length)
+            {
+                var check = Ar.Read<byte>();
+                if (check > 1)
+                {
+                    Ar.Position--;
+                }
+            }
+
+            goto beforeCompression;
+        }
+
         // New FPakInfo fields.
         EncryptionKeyGuid = Ar.Read<FGuid>();          // PakFile_Version_EncryptionKeyGuid
         EncryptedIndex = Ar.Read<byte>() != 0;         // Do not replace by ReadFlag
@@ -211,6 +286,15 @@ public partial class FPakInfo
 
         afterMagic:
         Version = hottaVersion >= 2 ? (EPakFileVersion) (Ar.Read<int>() ^ 2) : Ar.Read<EPakFileVersion>();
+        if (Ar.Game == EGame.GAME_LordOfMysteries && ((uint) Version & 0x80000000) != 0)
+        {
+            Version = (EPakFileVersion) ((uint) Version & 0x7FFFFFFF);
+            IndexHash = new FSHAHash(Ar);
+            IndexOffset = Ar.Read<long>();
+            IndexSize = Ar.Read<long>() >> 1;
+            goto beforeCompression;
+        }
+        
         if (Ar.Game == EGame.GAME_StateOfDecay2)
         {
             // ReSharper disable once BitwiseOperatorOnEnumWithoutFlags
@@ -304,6 +388,8 @@ public partial class FPakInfo
                 OffsetsToTry.SizeHotta => 5,
                 OffsetsToTry.SizeDbD => 5,
                 OffsetsToTry.SizeRennsport => 5,
+                OffsetsToTry.SizeBack4Blood => 5,
+                OffsetsToTry.SizeArenaBreakoutMobile => 5,
                 OffsetsToTry.Size8 => 4,
                 OffsetsToTry.Size8_1 => 1,
                 OffsetsToTry.Size8_2 => 2,
@@ -328,7 +414,7 @@ public partial class FPakInfo
                         continue;
                     if (!Enum.TryParse(name, true, out CompressionMethod method))
                     {
-                        Log.Warning($"Unknown compression method '{name}' in {Ar.Name}");
+                        Log.Warning("Unknown compression method '{CompressionMethod}' in {ArchiveName}", name, Ar.Name);
                         method = CompressionMethod.Unknown;
                     }
                     CompressionMethods.Add(method);
@@ -340,10 +426,17 @@ public partial class FPakInfo
             }
         }
 
+        // Written at the tail so the trailer for older versions remains byte-compatible. Paks authored before
+        // this version leave PakchunkIndex at INDEX_NONE, and the reader falls back to deriving it from the filename.
+        if (Version >= EPakFileVersion.PakFile_Version_PakchunkIndex)
+        {
+            PakchunkIndex = Ar.Read<int>();
+        }
+
         // Reset new fields to their default states when seralizing older pak format.
         if (Version < EPakFileVersion.PakFile_Version_IndexEncryption)
         {
-            EncryptedIndex = default;
+            EncryptedIndex = false;
         }
 
         if (Version < EPakFileVersion.PakFile_Version_EncryptionKeyGuid)
@@ -363,6 +456,7 @@ public partial class FPakInfo
         Size8 = Size8_3 + 32, // added size of CompressionMethods as char[32]
         Size8a = Size8 + 32, // UE4.23 - also has version 8 (like 4.22) but different pak file structure
         Size9 = Size8a + 1, // UE4.25
+        Size9a = Size9 + 4, // UE6.0 - Added pakchunk index int32
         SizeB1 = Size9 + 1, // plus 1
         //Size10 = Size8a
 
@@ -378,6 +472,8 @@ public partial class FPakInfo
 
         SizeLast,
         SizeMax = SizeLast - 1,
+        SizeBack4Blood = 222,
+        SizeArenaBreakoutMobile = 205,
         SizeDuneAwakening = 261,
         SizeKartRiderDrift = 397, // don't let this be SizeMax, it's way above average and cause issues
     }
@@ -388,6 +484,7 @@ public partial class FPakInfo
         OffsetsToTry.Size8,
         OffsetsToTry.Size,
         OffsetsToTry.Size9,
+        OffsetsToTry.Size9a,
 
         OffsetsToTry.Size8_1,
         OffsetsToTry.Size8_2,
@@ -401,8 +498,10 @@ public partial class FPakInfo
             var length = Ar.Length;
             var maxOffset = Ar.Game switch
             {
+                EGame.GAME_Back4Blood => (long) OffsetsToTry.SizeBack4Blood,
                 EGame.GAME_DuneAwakening => (long) OffsetsToTry.SizeDuneAwakening,
                 EGame.GAME_KartRiderDrift => (long) OffsetsToTry.SizeKartRiderDrift,
+                EGame.GAME_ArenaBreakoutMobile => (long) OffsetsToTry.SizeArenaBreakoutMobile,
                 _ => Math.Min(length, (long) OffsetsToTry.SizeMax),
             };
 
@@ -431,12 +530,14 @@ public partial class FPakInfo
                 EGame.GAME_ARKSurvivalAscended or EGame.GAME_PromiseMascotAgency => [OffsetsToTry.SizeARKSurvivalAscended],
                 EGame.GAME_KartRiderDrift => [.._offsetsToTry, OffsetsToTry.SizeKartRiderDrift],
                 EGame.GAME_DuneAwakening => [OffsetsToTry.SizeDuneAwakening],
+                EGame.GAME_Back4Blood => [OffsetsToTry.SizeBack4Blood],
+                EGame.GAME_ArenaBreakoutMobile=> [OffsetsToTry.SizeArenaBreakoutMobile, OffsetsToTry.Size8a],
                 _ => _offsetsToTry
             };
 
             foreach (var offset in offsetsToTry)
             {
-                if ((long)offset > maxOffset) continue;
+                if ((long) offset > maxOffset) continue;
 
                 reader.Seek(-(long) offset, SeekOrigin.End);
                 FPakInfo info;
@@ -466,7 +567,9 @@ public partial class FPakInfo
                     EGame.GAME_PromiseMascotAgency when info.Magic == PAK_FILE_MAGIC_PromiseMascotAgency => true,
                     EGame.GAME_WildAssault when info.Magic == PAK_FILE_MAGIC_WildAssault => true,
                     EGame.GAME_ArenaBreakoutInfinite when info.Magic == PAK_FILE_MAGIC_ArenaBreakoutInfinite => true,
+                    GAME_ArenaBreakoutMobile when info.Magic is PAK_FILE_MAGIC_ArenaBreakoutInfinite or PAK_FILE_MAGIC_ArenaBreakoutMobile => true,
                     EGame.GAME_AssaultFireFuture when info.Magic == PAK_FILE_MAGIC_AssaultFireFuture => true,
+                    EGame.GAME_Back4Blood when info.Magic == PAK_FILE_MAGIC_Back4Blood => true,
                     _ => info.Magic == PAK_FILE_MAGIC
                 };
                 if (found) return info;

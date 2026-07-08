@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -45,7 +45,7 @@ public abstract partial class AbstractAesVfsReader : AbstractVfsReader, IAesVfsR
             var backupKey = AesKey;
             AesKey = key;
             try { result = CustomEncryption(bytes, 0, bytes.Length, true, this); }
-            finally { AesKey = backupKey; } 
+            finally { AesKey = backupKey; }
         }
         else
         {

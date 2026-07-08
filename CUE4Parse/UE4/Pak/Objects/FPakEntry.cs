@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -119,8 +118,19 @@ public class FPakEntry : VfsEntry
         {
             if (CompressionMethod != CompressionMethod.None)
                 CompressionBlocks = Ar.ReadArray<FPakCompressedBlock>();
-            Flags = (uint) Ar.ReadByte();
-            CompressionBlockSize = Ar.Read<uint>();
+
+            switch (Ar.Game)
+            {
+                case GAME_Back4Blood:
+                    CompressionBlockSize = Ar.Read<uint>();
+                    Flags = Ar.Read<byte>();
+                    break;
+                default:
+                    Flags = Ar.Read<byte>();
+                    CompressionBlockSize = Ar.Read<uint>();
+                    break;
+            }
+
             if (Ar.Game == GAME_ConanExiles)
             {
                 if (CompressionMethod != CompressionMethod.None && (path.EndsWith("gtp") || path.EndsWith("gts")))
@@ -157,7 +167,7 @@ public class FPakEntry : VfsEntry
     public FPakEntry(PakFileReader reader, string path, GenericBufferReader Ar, int offset) : base(reader, path)
     {
         // UE4 reference: FPakFile::DecodePakEntry()
-        Ar.Seek(offset, System.IO.SeekOrigin.Begin);
+        Ar.Seek(offset, SeekOrigin.Begin);
         var bitfield = Ar.Read<uint>();
 
         if (reader.Game == GAME_WutheringWaves && reader.Info.Version > PakFile_Version_Fnv64BugFix)
@@ -167,7 +177,7 @@ public class FPakEntry : VfsEntry
             CustomData = Ar.Read<byte>();
         }
 
-        if (reader.Game is EGame.GAME_InfinityNikki)
+        if (reader.Game is GAME_InfinityNikki)
         {
             var compressionBlocksNum = (bitfield >> 6) & 0xFFFF;
             var isOffset32BitSafe = (bitfield >> 31) & 1;

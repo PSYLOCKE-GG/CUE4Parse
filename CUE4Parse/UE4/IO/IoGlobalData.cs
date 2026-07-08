@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using CUE4Parse.UE4.IO.Objects;
+﻿using CUE4Parse.UE4.IO.Objects;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
@@ -35,6 +34,7 @@ public class IoGlobalData
         }
 
         var numScriptObjects = metaAr.Read<int>();
+        ScriptObjectEntriesMap = new Dictionary<FPackageObjectIndex, FScriptObjectEntry>(numScriptObjects);
         var scriptObjectEntries = metaAr.ReadArray<FScriptObjectEntry>(numScriptObjects);
         foreach (var scriptObjectEntry in scriptObjectEntries)
         {
