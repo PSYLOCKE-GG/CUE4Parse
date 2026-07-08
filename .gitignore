@@ -399,3 +399,6 @@ FodyWeavers.xsd
 *.idea
 
 build
+
+# macOS
+.DS_Store
