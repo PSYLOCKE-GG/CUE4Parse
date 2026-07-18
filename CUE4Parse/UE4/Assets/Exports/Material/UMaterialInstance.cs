@@ -6,6 +6,7 @@ using CUE4Parse.UE4.Assets.Objects.Unversioned;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Assets.Utils;
 using CUE4Parse.UE4.Objects.Core.Misc;
+using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
@@ -20,7 +21,11 @@ public class UMaterialInstance : UMaterialInterface
 {
     private ResolvedObject? _parent;
     private bool bHasNonUPropertyStaticParameters = false;
-    public UUnrealMaterial? Parent => _parent?.Load<UUnrealMaterial>();
+    // Cooked Rivals VFX MIs serialize Parent so the typed ResolvedObject load returns null even
+    // though the ObjectProperty is present — fall back to loading the raw FPackageIndex directly so
+    // Parent (and parameter inheritance via GetParams) resolves to the base master.
+    public UUnrealMaterial? Parent => _parent?.Load<UUnrealMaterial>()
+        ?? GetOrDefault<FPackageIndex>(nameof(Parent))?.Load<UUnrealMaterial>();
     public bool bHasStaticPermutationResource;
     public FMaterialInstanceBasePropertyOverrides? BasePropertyOverrides;
     public FStaticParameterSet? StaticParameters;
