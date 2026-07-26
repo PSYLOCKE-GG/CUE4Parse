@@ -19,10 +19,10 @@ public class FStringTable
 
         KeysToEntries = Ar.ReadMap(Ar.ReadFString, () =>
         {
-            if (Ar.Game is EGame.GAME_CodeVein2) return CodeVein2StringEncryption.CodeVein2EncryptedFString(Ar, ECV2DecryptionMode.StringTable);
+            if (Ar.Game is GAME_CodeVein2) return CodeVein2StringEncryption.CodeVein2EncryptedFString(Ar, ECV2DecryptionMode.StringTable);
             var value = Ar.ReadFString();
 
-            if (Ar.Game == EGame.GAME_MarvelRivals)
+            if (Ar.Game == GAME_MarvelRivals)
             {
                 if (Ar.Versions.ArbitraryVersion == null ||
                     Ar.Versions.ArbitraryVersion >= MarvelRivalsVersions.StringTableEntryTrailingFString)
@@ -35,7 +35,7 @@ public class FStringTable
                 }
             }
 
-            if (Ar.Game == EGame.GAME_LostRecordsBloomAndRage)
+            if (Ar.Game == GAME_LostRecordsBloomAndRage)
             {
                 Ar.SkipFString();
                 var length = int.TryParse(Ar.ReadFString(), out var len) ? len : 0;
@@ -44,7 +44,7 @@ public class FStringTable
             }
             return value;
         });
-        if (Ar.Game == EGame.GAME_Wildgate) return;
+        if (Ar.Game == GAME_Wildgate) return;
         KeysToMetaData = Ar.ReadMap(Ar.ReadFString, () => Ar.ReadMap(Ar.ReadFName, Ar.ReadFString));
     }
 }

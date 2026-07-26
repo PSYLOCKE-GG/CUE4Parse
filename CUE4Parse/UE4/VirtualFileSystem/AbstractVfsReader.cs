@@ -8,13 +8,11 @@ using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.Utils;
 using GenericReader;
-using Serilog;
 
 namespace CUE4Parse.UE4.VirtualFileSystem
 {
     public abstract partial class AbstractVfsReader : IVfsReader
     {
-        protected static readonly ILogger Log = Serilog.Log.ForContext<AbstractVfsReader>();
 
         public string Path { get; }
         public string Name { get; }
@@ -77,7 +75,7 @@ namespace CUE4Parse.UE4.VirtualFileSystem
             {
                 if (Globals.LogVfsMounts)
                 {
-                    Log.Warning($"\"{Name}\" has strange mount point \"{mountPoint}\", mounting to root");
+                    Log.Warning("\"{Name}\" has strange mount point \"{MountPoint}\", mounting to root", Name, mountPoint);
                 }
 
                 mountPoint = "/";

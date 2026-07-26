@@ -27,7 +27,7 @@ public class UMaterialInterface : UUnrealMaterial
 
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
-        if(Ar.Game == EGame.GAME_WorldofJadeDynasty) Ar.Position += 24;
+        if(Ar.Game == GAME_WorldofJadeDynasty) Ar.Position += 24;
         base.Deserialize(Ar, validPos);
         bUseMobileSpecular = GetOrDefault<bool>(nameof(bUseMobileSpecular));
         MobileSpecularPower = GetOrDefault<float>(nameof(MobileSpecularPower));
@@ -44,7 +44,7 @@ public class UMaterialInterface : UUnrealMaterial
             CachedExpressionData = new FStructFallback(Ar, "MaterialCachedExpressionData");
         }
 
-        if (Ar.Game == EGame.GAME_HogwartsLegacy) CustomGameData = new FSHAHash(Ar);
+        if (Ar.Game == GAME_HogwartsLegacy) CustomGameData = new FSHAHash(Ar);
     }
 
     protected internal override void WriteJson(JsonWriter writer, JsonSerializer serializer)
@@ -78,6 +78,10 @@ public class UMaterialInterface : UUnrealMaterial
 
     public override void GetParams(CMaterialParams2 parameters, EMaterialFormat format)
     {
+        if (FlattenedTexture != null) parameters.VerifyTexture("Diffuse", FlattenedTexture, false);
+        if (MobileBaseTexture != null) parameters.VerifyTexture("Diffuse", MobileBaseTexture, false);
+        if (MobileNormalTexture != null) parameters.VerifyTexture("Normal", MobileNormalTexture, false);
+
         for (int i = 0; i < TextureStreamingData.Length; i++)
         {
             var name = TextureStreamingData[i].TextureName.Text;
@@ -170,7 +174,7 @@ public class UMaterialInterface : UUnrealMaterial
         if (numLoadedResources > 0)
         {
             FMaterialResourceProxyReader resourceAr;
-            if (Ar.Game != EGame.GAME_Stalker2)
+            if (Ar.Game != GAME_Stalker2)
             {
                 resourceAr = new FMaterialResourceProxyReader(Ar);
             }

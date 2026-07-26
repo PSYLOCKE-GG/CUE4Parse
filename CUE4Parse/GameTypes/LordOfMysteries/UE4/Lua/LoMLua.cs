@@ -2,10 +2,11 @@ using System.Text;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Lua.Archives;
 using CUE4Parse.UE4.Lua.Readers;
+using CUE4Parse.Utils;
 
 namespace CUE4Parse.GameTypes.LordOfMysteries.UE4.Lua;
 
-public static class LordOfMysteriesLua
+public static class LoMLua
 {
     private static readonly byte[] _xorKey = Encoding.ASCII.GetBytes("c7fjs-432890fadnsyu9reqwj;lerwqio;jf;ldsanmdgmzz"); // off_14C7ECAE8
 
@@ -31,8 +32,7 @@ public static class LordOfMysteriesLua
 
             var protoEnd = Ar.Position + protoLength;
             var proto = data.AsSpan((int) Ar.Position, protoLength);
-            for (var i = 0; i < proto.Length; i++)
-                proto[i] ^= _xorKey[i % _xorKey.Length];
+            TensorUtils.Xor(proto, _xorKey);
 
             RemapOpcodes(Ar, proto);
             Ar.Position = protoEnd;

@@ -29,9 +29,9 @@ public partial class PakFileReader
     {
         var limit = Game switch
         {
-            EGame.GAME_MarvelRivals => CalculateEncryptedBytesCountForMarvelRivals(pakEntry),
-            EGame.GAME_OperationApocalypse or EGame.GAME_MindsEye => 0x1000,
-            EGame.GAME_WutheringWaves => CalculateEncryptedBytesCountForWutheringWaves(pakEntry),
+            GAME_MarvelRivals => CalculateEncryptedBytesCountForMarvelRivals(pakEntry),
+            GAME_OperationApocalypse or GAME_MindsEye => 0x1000,
+            GAME_WutheringWaves => CalculateEncryptedBytesCountForWutheringWaves(pakEntry),
             _ => throw new ArgumentOutOfRangeException(nameof(reader.Game), "Unsupported game for partial encrypted pak entry extraction")
         };
 
@@ -130,9 +130,9 @@ public partial class PakFileReader
     {
         var limit = Game switch
         {
-            EGame.GAME_MarvelRivals => CalculateEncryptedBytesCountForMarvelRivals(pakEntry),
-            EGame.GAME_OperationApocalypse or EGame.GAME_MindsEye => 0x1000,
-            EGame.GAME_WutheringWaves => CalculateEncryptedBytesCountForWutheringWaves(pakEntry),
+            GAME_MarvelRivals => CalculateEncryptedBytesCountForMarvelRivals(pakEntry),
+            GAME_OperationApocalypse or GAME_MindsEye => 0x1000,
+            GAME_WutheringWaves => CalculateEncryptedBytesCountForWutheringWaves(pakEntry),
             _ => throw new ArgumentOutOfRangeException(nameof(reader.Game), "Unsupported game for partial encrypted pak entry extraction")
         };
 

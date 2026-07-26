@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+using System.Numerics;
+using System.Text.Json.Nodes;
 using CUE4Parse_Conversion.Materials;
 using CUE4Parse_Conversion.Meshes.PSK;
 using CUE4Parse.UE4.Assets.Exports.Animation;

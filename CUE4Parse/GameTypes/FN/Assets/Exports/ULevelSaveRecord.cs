@@ -10,7 +10,6 @@ using CUE4Parse.UE4.Readers;
 using CUE4Parse.Utils;
 using Ionic.Crc;
 using Newtonsoft.Json;
-using Serilog;
 
 namespace CUE4Parse.GameTypes.FN.Assets.Exports;
 
@@ -85,6 +84,7 @@ public class FLevelSaveRecordArchive : FObjectAndNameAsStringProxyArchive
 [StructFallback]
 public class FActorTemplateRecord
 {
+
     public ulong ID;
     public FSoftObjectPath ActorClass;
     public FActorComponentRecord[] ActorComponents;
@@ -177,6 +177,7 @@ public class FActorTemplateRecord
 
 public class FActorComponentRecord
 {
+
     public FName ComponentName;
     public FSoftObjectPath ComponentClass; // UClass
     public byte[]? ComponentData;
@@ -327,6 +328,7 @@ public class FFortCreativeVkPalette
 
 public class ULevelSaveRecord : UObject
 {
+
     public FName PackageName;
     public ELevelSaveRecordVersion SaveVersion;
     public bool bCompressed;

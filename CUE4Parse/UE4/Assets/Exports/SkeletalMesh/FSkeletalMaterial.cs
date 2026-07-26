@@ -54,14 +54,14 @@ public class FSkeletalMaterial
 
         switch (Ar.Game)
         {
-            case EGame.GAME_MarvelRivals:
+            case GAME_MarvelRivals:
                 if (Ar.Versions.ArbitraryVersion != null && Ar.Versions.ArbitraryVersion < MarvelRivalsVersions.SkeletalMaterialGameplayTags) break;
                 _ = new FGameplayTagContainer(Ar);
                 break;
-            case EGame.GAME_FragPunk or EGame.GAME_DaysGone or EGame.GAME_WorldofJadeDynasty or EGame.GAME_AssaultFireFuture:
+            case GAME_FragPunk or GAME_DaysGone or GAME_WorldofJadeDynasty or GAME_AssaultFireFuture:
                 Ar.Position += 4;
                 break;
-            case EGame.GAME_Strinova:
+            case GAME_Strinova:
                 Ar.Position += 8;
                 break;
         }
