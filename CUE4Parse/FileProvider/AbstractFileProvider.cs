@@ -60,6 +60,12 @@ namespace CUE4Parse.FileProvider
         public bool UseLazyPackageSerialization { get; set; } = true;
 
         /// <summary>
+        /// Resident-package reuse for <see cref="LoadPackage(GameFile)"/> and its async twins.
+        /// Off by default; see <see cref="FileProvider.PackageCache"/>.
+        /// </summary>
+        public PackageCache PackageCache { get; } = new();
+
+        /// <summary>
         /// When LoadPackageAsync opens a pak or io-store entry whose uncompressed size is at or below
         /// this threshold, the entire uasset is pre-buffered via a single async extract — letting
         /// subsequent in-memory deserialization run sync against a byte buffer instead of triggering
@@ -633,7 +639,11 @@ namespace CUE4Parse.FileProvider
         #region LoadPackage Methods
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public IPackage LoadPackage(string path) => LoadPackage(this[path]);
-        public virtual IPackage LoadPackage(GameFile file)
+        public virtual IPackage LoadPackage(GameFile file) => PackageCache.Enabled
+            ? PackageCache.GetOrLoad(file, LoadPackageInner)
+            : LoadPackageInner(file);
+
+        private IPackage LoadPackageInner(GameFile file)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
@@ -667,7 +677,11 @@ namespace CUE4Parse.FileProvider
         // Kept virtual with its original (no-CT) body so third-party subclasses that override
         // LoadPackageAsync(GameFile) continue to dispatch as before. New callers should use the
         // CT-taking overload below, which is independently virtual.
-        public virtual async Task<IPackage> LoadPackageAsync(GameFile file)
+        public virtual Task<IPackage> LoadPackageAsync(GameFile file) => PackageCache.Enabled
+            ? PackageCache.GetOrLoadAsync(file, LoadPackageInnerAsync)
+            : LoadPackageInnerAsync(file);
+
+        private async Task<IPackage> LoadPackageInnerAsync(GameFile file)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
@@ -697,7 +711,13 @@ namespace CUE4Parse.FileProvider
             }
         }
 
-        public virtual async Task<IPackage> LoadPackageAsync(GameFile file, CancellationToken cancellationToken)
+        // A cache-shared load is driven by the initiating caller's token; late joiners observe
+        // its cancellation, and a canceled load is never cached (a retry starts fresh).
+        public virtual Task<IPackage> LoadPackageAsync(GameFile file, CancellationToken cancellationToken) => PackageCache.Enabled
+            ? PackageCache.GetOrLoadAsync(file, f => LoadPackageInnerAsync(f, cancellationToken))
+            : LoadPackageInnerAsync(file, cancellationToken);
+
+        private async Task<IPackage> LoadPackageInnerAsync(GameFile file, CancellationToken cancellationToken)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
