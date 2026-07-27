@@ -33,14 +33,15 @@ namespace CUE4Parse.UE4.Assets
         public List<byte[]>? EditorThumbnails { get; }
         public FPackageTrailer? Trailer { get; }
 
-        public Package(FArchive uasset, FArchive? uexp, FArchive? ubulk = null, FArchive? uptnl = null, IFileProvider? provider = null, bool useLazySerialization = true)
+        public Package(FArchive uasset, FArchive? uexp, FArchive? ubulk = null, FArchive? uptnl = null, IFileProvider? provider = null, bool useLazySerialization = true, EPackageReadFlags readFlags = EPackageReadFlags.None)
             : this(
                 uasset,
                 uexp,
                 ubulk != null ? _ => ubulk : null,
                 uptnl != null ? _ => uptnl : null,
                 provider,
-                useLazySerialization)
+                useLazySerialization,
+                readFlags)
         { }
 
         public Package(string name, byte[] uasset, byte[]? uexp, byte[]? ubulk = null, byte[]? uptnl = null, IFileProvider? provider = null, bool useLazySerialization = true)
@@ -59,9 +60,11 @@ namespace CUE4Parse.UE4.Assets
             Func<FByteBulkDataHeader?, FArchive?>? ubulk = null,
             Func<FByteBulkDataHeader?, FArchive?>? uptnl = null,
             IFileProvider? provider = null,
-            bool useLazySerialization = true)
+            bool useLazySerialization = true,
+            EPackageReadFlags readFlags = EPackageReadFlags.None)
             : base(uasset.Name.SubstringBeforeLast('.'), provider)
         {
+            ReadFlags = readFlags;
             // We clone the version container because it can be modified with package specific versions when reading the summary
             uasset.Versions = (VersionContainer) uasset.Versions.Clone();
 

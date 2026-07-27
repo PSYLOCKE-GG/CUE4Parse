@@ -29,24 +29,30 @@ public class PackageCache
     public long MissCount => Interlocked.Read(ref _misses);
     public long EvictionCount => Interlocked.Read(ref _evictions);
 
-    private readonly Lock _lock = new();
-    private readonly Dictionary<GameFile, LinkedListNode<(GameFile File, IPackage Package)>> _residents = [];
-    private readonly LinkedList<(GameFile File, IPackage Package)> _lru = [];
-    private readonly ConcurrentDictionary<GameFile, Lazy<Task<IPackage>>> _inFlight = [];
+    // Reference equality on GameFile keeps identical paths from different containers distinct;
+    // flags participate so a metadata-only load never satisfies a full-fidelity one.
+    private readonly record struct Key(GameFile File, EPackageReadFlags Flags);
 
-    public IPackage GetOrLoad(GameFile file, Func<GameFile, IPackage> loader)
+    private readonly Lock _lock = new();
+    private readonly Dictionary<Key, LinkedListNode<(Key Key, IPackage Package)>> _residents = [];
+    private readonly LinkedList<(Key Key, IPackage Package)> _lru = [];
+    private readonly ConcurrentDictionary<Key, Lazy<Task<IPackage>>> _inFlight = [];
+
+    public IPackage GetOrLoad(GameFile file, EPackageReadFlags readFlags, Func<GameFile, IPackage> loader)
     {
-        if (TryGetResident(file, out var resident)) return resident;
-        var lazy = _inFlight.GetOrAdd(file, _ => new Lazy<Task<IPackage>>(
-            () => Task.FromResult(LoadAndRegister(file, loader)), LazyThreadSafetyMode.ExecutionAndPublication));
+        var key = new Key(file, readFlags);
+        if (TryGetResident(key, out var resident)) return resident;
+        var lazy = _inFlight.GetOrAdd(key, _ => new Lazy<Task<IPackage>>(
+            () => Task.FromResult(LoadAndRegister(key, loader)), LazyThreadSafetyMode.ExecutionAndPublication));
         return lazy.Value.GetAwaiter().GetResult();
     }
 
-    public Task<IPackage> GetOrLoadAsync(GameFile file, Func<GameFile, Task<IPackage>> loader)
+    public Task<IPackage> GetOrLoadAsync(GameFile file, EPackageReadFlags readFlags, Func<GameFile, Task<IPackage>> loader)
     {
-        if (TryGetResident(file, out var resident)) return Task.FromResult(resident);
-        var lazy = _inFlight.GetOrAdd(file, _ => new Lazy<Task<IPackage>>(
-            () => LoadAndRegisterAsync(file, loader), LazyThreadSafetyMode.ExecutionAndPublication));
+        var key = new Key(file, readFlags);
+        if (TryGetResident(key, out var resident)) return Task.FromResult(resident);
+        var lazy = _inFlight.GetOrAdd(key, _ => new Lazy<Task<IPackage>>(
+            () => LoadAndRegisterAsync(key, loader), LazyThreadSafetyMode.ExecutionAndPublication));
         return lazy.Value;
     }
 
@@ -59,43 +65,43 @@ public class PackageCache
         }
     }
 
-    private IPackage LoadAndRegister(GameFile file, Func<GameFile, IPackage> loader)
+    private IPackage LoadAndRegister(Key key, Func<GameFile, IPackage> loader)
     {
         try
         {
             Interlocked.Increment(ref _misses);
-            var package = loader(file);
-            Register(file, package);
+            var package = loader(key.File);
+            Register(key, package);
             return package;
         }
         finally
         {
             // Removed only after Register, so late callers find the package resident
             // rather than starting a second load.
-            _inFlight.TryRemove(file, out _);
+            _inFlight.TryRemove(key, out _);
         }
     }
 
-    private async Task<IPackage> LoadAndRegisterAsync(GameFile file, Func<GameFile, Task<IPackage>> loader)
+    private async Task<IPackage> LoadAndRegisterAsync(Key key, Func<GameFile, Task<IPackage>> loader)
     {
         try
         {
             Interlocked.Increment(ref _misses);
-            var package = await loader(file).ConfigureAwait(false);
-            Register(file, package);
+            var package = await loader(key.File).ConfigureAwait(false);
+            Register(key, package);
             return package;
         }
         finally
         {
-            _inFlight.TryRemove(file, out _);
+            _inFlight.TryRemove(key, out _);
         }
     }
 
-    private bool TryGetResident(GameFile file, out IPackage package)
+    private bool TryGetResident(Key key, out IPackage package)
     {
         lock (_lock)
         {
-            if (_residents.TryGetValue(file, out var node))
+            if (_residents.TryGetValue(key, out var node))
             {
                 _lru.Remove(node);
                 _lru.AddFirst(node);
@@ -109,17 +115,17 @@ public class PackageCache
         return false;
     }
 
-    private void Register(GameFile file, IPackage package)
+    private void Register(Key key, IPackage package)
     {
         lock (_lock)
         {
-            if (_residents.ContainsKey(file)) return;
-            _residents[file] = _lru.AddFirst((file, package));
+            if (_residents.ContainsKey(key)) return;
+            _residents[key] = _lru.AddFirst((key, package));
             while (_residents.Count > MaxSize)
             {
                 var last = _lru.Last!;
                 _lru.RemoveLast();
-                _residents.Remove(last.Value.File);
+                _residents.Remove(last.Value.Key);
                 Interlocked.Increment(ref _evictions);
             }
         }

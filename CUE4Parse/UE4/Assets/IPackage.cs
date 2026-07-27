@@ -14,6 +14,7 @@ public interface IPackage
     public string Name { get; set; }
     public IFileProvider? Provider { get; }
     public TypeMappings? Mappings { get; }
+    public EPackageReadFlags ReadFlags => EPackageReadFlags.None;
 
     public FPackageFileSummary Summary { get; }
     public FNameEntrySerialized[] NameMap { get; }

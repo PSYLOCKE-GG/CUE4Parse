@@ -32,9 +32,26 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
         public string? CurveCodecPath;
         public byte[]? CompressedCurveByteStream;
         public FRawCurveTracks? CompressedCurveData; // disappeared in 4.23
-        public ICompressedAnimData? CompressedDataStructure;
+
+        private ICompressedAnimData? _compressedDataStructure;
+        public ICompressedAnimData? CompressedDataStructure
+        {
+            get => IsBoneDataStripped
+                ? throw new InvalidOperationException(
+                    $"Bone data of '{Name}' was not deserialized: its package was loaded with EPackageReadFlags.AnimMetadataOnly. Reload the package without the flag for bone tracks.")
+                : _compressedDataStructure;
+            set => _compressedDataStructure = value;
+        }
+
         public int CompressedRawDataSize;
         #endregion
+
+        /// <summary>
+        /// True when this sequence came from a package loaded with <see cref="EPackageReadFlags.AnimMetadataOnly"/>
+        /// and its compressed bone stream was skipped. <see cref="CompressedDataStructure"/> throws on such
+        /// instances. <see cref="NumFrames"/> is not recovered from the compressed data and keeps its property value.
+        /// </summary>
+        public bool IsBoneDataStripped { get; private set; }
 
         public EAdditiveAnimationType AdditiveAnimType;
         public EAdditiveBasePoseType RefPoseType;
@@ -48,9 +65,14 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
         {
             base.Deserialize(Ar, validPos);
             if (Ar.Game == GAME_WorldofJadeDynasty) Ar.Position += 28;
+            var metadataOnly = Ar.Owner?.ReadFlags.HasFlag(EPackageReadFlags.AnimMetadataOnly) ?? false;
             NumFrames = GetOrDefault<int>(nameof(NumFrames));
-            BoneCompressionSettings = GetOrDefault<ResolvedObject>(nameof(BoneCompressionSettings));
-            CurveCompressionSettings = GetOrDefault<ResolvedObject>(nameof(CurveCompressionSettings));
+            if (!metadataOnly)
+            {
+                // Materializing either ResolvedObject loads every imported package of this one.
+                BoneCompressionSettings = GetOrDefault<ResolvedObject>(nameof(BoneCompressionSettings));
+                CurveCompressionSettings = GetOrDefault<ResolvedObject>(nameof(CurveCompressionSettings));
+            }
             AdditiveAnimType = GetOrDefault<EAdditiveAnimationType>(nameof(AdditiveAnimType));
             RefPoseType = GetOrDefault<EAdditiveBasePoseType>(nameof(RefPoseType));
             RefPoseSeq = GetOrDefault<ResolvedObject>(nameof(RefPoseSeq));
@@ -59,7 +81,7 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
             RetargetSourceAssetReferencePose = GetOrDefault<FTransform[]>(nameof(RetargetSourceAssetReferencePose));
             Interpolation = GetOrDefault<EAnimInterpolationType>(nameof(Interpolation));
 
-            if (BoneCompressionSettings == null && Ar.Game == GAME_RogueCompany)
+            if (!metadataOnly && BoneCompressionSettings == null && Ar.Game == GAME_RogueCompany)
             {
                 BoneCompressionSettings = new ResolvedLoadedObject(Owner!.Provider!.LoadPackageObject("/Game/Animation/KSAnimBoneCompressionSettings.KSAnimBoneCompressionSettings"));
             }
@@ -127,7 +149,7 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
                     else if (Ar.Game < GAME_UE4_25 && Ar.Game != GAME_AssaultFireFuture)
                         SerializeCompressedData2(Ar);
                     else
-                        SerializeCompressedData3(Ar);
+                        SerializeCompressedData3(Ar, metadataOnly);
 
                     if (FFortniteMainBranchObjectVersion.Get(Ar) < FFortniteMainBranchObjectVersion.Type.AnimSequenceRawDataOnlyFlagRemoval)
                         Ar.Position += 4;
@@ -136,6 +158,12 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
 
             if (CompressedCurveData == null && CompressedCurveByteStream is { Length: > 0 } && CompressedCurveNames is { Length: > 0 })
             {
+                if (metadataOnly)
+                {
+                    // Curves are part of the metadata contract, so the codec settings do get
+                    // resolved — but only for sequences that actually carry curves.
+                    CurveCompressionSettings ??= GetOrDefault<ResolvedObject>(nameof(CurveCompressionSettings));
+                }
                 if (!string.IsNullOrEmpty(CurveCodecPath) && CurveCompressionSettings?.Load<UAnimCurveCompressionSettings>()?.GetCodec(CurveCodecPath) is { } codec)
                 {
                     CompressedCurveData = new FRawCurveTracks(codec.ConvertCurves(CompressedCurveNames, CompressedCurveByteStream));
@@ -188,10 +216,10 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
                 serializer.Serialize(writer, CompressedCurveData);
             }
 
-            if (CompressedDataStructure != null)
+            if (_compressedDataStructure != null)
             {
                 writer.WritePropertyName("CompressedDataStructure");
-                serializer.Serialize(writer, CompressedDataStructure);
+                serializer.Serialize(writer, _compressedDataStructure);
             }
 
             if (CompressedRawDataSize > 0)
@@ -301,13 +329,13 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
 
         // UE4.25 has changed data layout, and therefore serialization order has been changed too.
         // In UE4.25 serialization is done in FCompressedAnimSequence::SerializeCompressedData().
-        private void SerializeCompressedData3(FAssetArchive Ar)
+        private void SerializeCompressedData3(FAssetArchive Ar, bool metadataOnly = false)
         {
             CompressedRawDataSize = Ar.Read<int>();
             CompressedTrackToSkeletonMapTable = Ar.ReadArray<FTrackToSkeletonMap>();
             CompressedCurveNames = Ar.ReadArray(() => new FSmartName(Ar));
 
-            var serializedByteStream = ReadSerializedByteStream(Ar);
+            var serializedByteStream = ReadSerializedByteStream(Ar, metadataOnly);
 
             BoneCodecDDCHandle = Ar.ReadFString();
             CurveCodecPath = Ar.ReadFString();
@@ -315,12 +343,18 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
             var numCurveBytes = Ar.Read<int>();
             CompressedCurveByteStream = Ar.ReadBytes(numCurveBytes);
 
+            if (metadataOnly)
+            {
+                IsBoneDataStripped = true;
+                return;
+            }
+
             var boneCompressionCodec = BoneCompressionSettings?.Load<UAnimBoneCompressionSettings>()?.GetCodec(BoneCodecDDCHandle);
             if (boneCompressionCodec != null)
             {
                 CompressedDataStructure = boneCompressionCodec.AllocateAnimData();
                 CompressedDataStructure.SerializeCompressedData(Ar);
-                CompressedDataStructure.Bind(serializedByteStream);
+                CompressedDataStructure.Bind(serializedByteStream!);
                 NumFrames = CompressedDataStructure.CompressedNumberOfFrames;
             }
             else
@@ -330,7 +364,7 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte[] ReadSerializedByteStream(FAssetArchive Ar)
+        private static byte[]? ReadSerializedByteStream(FAssetArchive Ar, bool skipData = false)
         {
             var numBytes = Ar.Read<int>();
             var bUseBulkDataForLoad = Ar.ReadBoolean();
@@ -352,9 +386,17 @@ namespace CUE4Parse.UE4.Assets.Exports.Animation
 
             if (bUseBulkDataForLoad)
             {
+                // Constructing FByteBulkData reads only the header and advances past inline
+                // payloads, so a skipped stream still leaves the archive positioned correctly.
                 var bulkData = new FByteBulkData(Ar);
+                if (skipData) return null;
                 using var bulkAr = new FByteArchive("AnimSequenceBulkData", bulkData.Data, Ar.Versions);
                 serializedByteStream = bulkAr.ReadBytes(numBytes);
+            }
+            else if (skipData)
+            {
+                Ar.Position += numBytes;
+                return null;
             }
             else
             {

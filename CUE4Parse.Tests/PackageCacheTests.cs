@@ -54,8 +54,8 @@ public class PackageCacheTests
         var file = new FakeGameFile("Game/A.uasset");
         var loads = 0;
 
-        var first = cache.GetOrLoad(file, _ => { loads++; return new FakePackage(); });
-        var second = cache.GetOrLoad(file, _ => { loads++; return new FakePackage(); });
+        var first = cache.GetOrLoad(file, EPackageReadFlags.None, _ => { loads++; return new FakePackage(); });
+        var second = cache.GetOrLoad(file, EPackageReadFlags.None, _ => { loads++; return new FakePackage(); });
 
         Assert.Same(first, second);
         Assert.Equal(1, loads);
@@ -75,7 +75,7 @@ public class PackageCacheTests
         var threads = Enumerable.Range(0, 16).Select(i => new Thread(() =>
         {
             gate.Wait();
-            results[i] = cache.GetOrLoad(file, _ =>
+            results[i] = cache.GetOrLoad(file, EPackageReadFlags.None, _ =>
             {
                 Interlocked.Increment(ref loads);
                 Thread.Sleep(50);
@@ -94,8 +94,8 @@ public class PackageCacheTests
     public void DistinctFilesWithSamePathAreDistinctEntries()
     {
         var cache = new PackageCache { Enabled = true };
-        var a = cache.GetOrLoad(new FakeGameFile("Game/A.uasset"), _ => new FakePackage());
-        var b = cache.GetOrLoad(new FakeGameFile("Game/A.uasset"), _ => new FakePackage());
+        var a = cache.GetOrLoad(new FakeGameFile("Game/A.uasset"), EPackageReadFlags.None, _ => new FakePackage());
+        var b = cache.GetOrLoad(new FakeGameFile("Game/A.uasset"), EPackageReadFlags.None, _ => new FakePackage());
         Assert.NotSame(a, b);
     }
 
@@ -107,15 +107,15 @@ public class PackageCacheTests
         var b = new FakeGameFile("Game/B.uasset");
         var c = new FakeGameFile("Game/C.uasset");
 
-        var pa = cache.GetOrLoad(a, _ => new FakePackage());
-        cache.GetOrLoad(b, _ => new FakePackage());
-        cache.GetOrLoad(a, _ => new FakePackage()); // touch A so B is LRU
-        cache.GetOrLoad(c, _ => new FakePackage()); // evicts B
+        var pa = cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage());
+        cache.GetOrLoad(b, EPackageReadFlags.None, _ => new FakePackage());
+        cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage()); // touch A so B is LRU
+        cache.GetOrLoad(c, EPackageReadFlags.None, _ => new FakePackage()); // evicts B
 
         Assert.Equal(1, cache.EvictionCount);
-        Assert.Same(pa, cache.GetOrLoad(a, _ => new FakePackage()));
+        Assert.Same(pa, cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage()));
         var reloads = 0;
-        cache.GetOrLoad(b, _ => { reloads++; return new FakePackage(); });
+        cache.GetOrLoad(b, EPackageReadFlags.None, _ => { reloads++; return new FakePackage(); });
         Assert.Equal(1, reloads);
     }
 
@@ -126,9 +126,9 @@ public class PackageCacheTests
         var file = new FakeGameFile("Game/A.uasset");
 
         Assert.Throws<InvalidOperationException>(() =>
-            cache.GetOrLoad(file, _ => throw new InvalidOperationException("boom")));
+            cache.GetOrLoad(file, EPackageReadFlags.None, _ => throw new InvalidOperationException("boom")));
 
-        var pkg = cache.GetOrLoad(file, _ => new FakePackage());
+        var pkg = cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
         Assert.NotNull(pkg);
     }
 
@@ -138,8 +138,8 @@ public class PackageCacheTests
         var cache = new PackageCache { Enabled = true };
         var file = new FakeGameFile("Game/A.uasset");
 
-        var fromAsync = await cache.GetOrLoadAsync(file, _ => Task.FromResult<IPackage>(new FakePackage()));
-        var fromSync = cache.GetOrLoad(file, _ => new FakePackage());
+        var fromAsync = await cache.GetOrLoadAsync(file, EPackageReadFlags.None, _ => Task.FromResult<IPackage>(new FakePackage()));
+        var fromSync = cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
 
         Assert.Same(fromAsync, fromSync);
     }
@@ -149,11 +149,25 @@ public class PackageCacheTests
     {
         var cache = new PackageCache { Enabled = true };
         var file = new FakeGameFile("Game/A.uasset");
-        var first = cache.GetOrLoad(file, _ => new FakePackage());
+        var first = cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
         cache.Clear();
-        var second = cache.GetOrLoad(file, _ => new FakePackage());
+        var second = cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
 
         Assert.NotSame(first, second);
         Assert.Equal(0, cache.EvictionCount);
+    }
+
+    [Fact]
+    public void SameFileDifferentReadFlagsAreDistinctEntries()
+    {
+        var cache = new PackageCache { Enabled = true };
+        var file = new FakeGameFile("Game/A.uasset");
+
+        var full = cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
+        var meta = cache.GetOrLoad(file, EPackageReadFlags.AnimMetadataOnly, _ => new FakePackage());
+
+        Assert.NotSame(full, meta);
+        Assert.Same(full, cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage()));
+        Assert.Same(meta, cache.GetOrLoad(file, EPackageReadFlags.AnimMetadataOnly, _ => new FakePackage()));
     }
 }

@@ -32,13 +32,14 @@ public sealed class IoPackage : AbstractUePackage
     public readonly Lazy<IoPackage?[]> ImportedPackages;
     public readonly Lazy<IPackage?[][]> ImportedPackagesAllVersions;
 
-    public IoPackage(FArchive uasset, FIoContainerHeader? containerHeader = null, FArchive? ubulk = null, FArchive? uptnl = null, IVfsFileProvider? provider = null)
+    public IoPackage(FArchive uasset, FIoContainerHeader? containerHeader = null, FArchive? ubulk = null, FArchive? uptnl = null, IVfsFileProvider? provider = null, EPackageReadFlags readFlags = EPackageReadFlags.None)
         : this(
             uasset,
             containerHeader,
             ubulk != null ? _ => ubulk : null,
             uptnl != null ? _ => uptnl : null,
-            provider)
+            provider,
+            readFlags)
     { }
 
     public IoPackage(
@@ -46,9 +47,11 @@ public sealed class IoPackage : AbstractUePackage
         FIoContainerHeader? containerHeader = null,
         Func<FByteBulkDataHeader?, FArchive?>? ubulk = null,
         Func<FByteBulkDataHeader?, FArchive?>? uptnl = null,
-        IVfsFileProvider? provider = null)
+        IVfsFileProvider? provider = null,
+        EPackageReadFlags readFlags = EPackageReadFlags.None)
         : base(uasset.Name.SubstringBeforeLast('.'), provider)
     {
+        ReadFlags = readFlags;
         _globalData = provider?.GlobalData ?? throw new ParserException("Found IoStore Package but global data is missing, can't serialize");
 
         var uassetAr = new FAssetArchive(uasset, this);

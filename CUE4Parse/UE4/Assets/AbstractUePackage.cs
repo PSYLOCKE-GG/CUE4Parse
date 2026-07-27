@@ -20,6 +20,7 @@ public abstract class AbstractUePackage : UObject, IPackage
     
     public IFileProvider? Provider { get; }
     public TypeMappings? Mappings => Provider?.MappingsForGame;
+    public EPackageReadFlags ReadFlags { get; protected set; }
 
     public abstract FPackageFileSummary Summary { get; }
     public abstract FNameEntrySerialized[] NameMap { get; }
