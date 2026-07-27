@@ -103,7 +103,9 @@ public abstract class AbstractUePackage : UObject, IPackage
             var remaining = validPos - Ar.Position;
             switch (remaining)
             {
-                case > 0:
+                // Metadata-only read flags stop deserialization early on purpose; warning
+                // on every stripped export would drown a debug build.
+                case > 0 when ReadFlags == EPackageReadFlags.None:
                     Log.Warning("Did not read {0} correctly, {1} bytes remaining ({2}%)", obj.ExportType, remaining,
                         Math.Round((decimal)remaining / validPos * 100, 2));
                     break;

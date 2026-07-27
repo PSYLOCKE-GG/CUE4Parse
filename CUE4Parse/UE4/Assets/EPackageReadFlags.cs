@@ -19,4 +19,12 @@ public enum EPackageReadFlags
     /// IsBoneDataStripped and accessing their CompressedDataStructure throws.
     /// </summary>
     AnimMetadataOnly = 1 << 0,
+
+    /// <summary>
+    /// USkeletalMesh exports deserialize metadata only: the property table, Sockets,
+    /// MorphTargets, Skeleton, materials and ReferenceSkeleton are populated, but LOD render
+    /// data (vertex, skin-weight and index buffers) is neither read nor decoded. Affected
+    /// instances are marked IsLODDataStripped and accessing their LODModels throws.
+    /// </summary>
+    MeshMetadataOnly = 1 << 1,
 }
