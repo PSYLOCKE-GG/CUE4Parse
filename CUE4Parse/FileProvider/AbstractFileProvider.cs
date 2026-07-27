@@ -649,6 +649,12 @@ namespace CUE4Parse.FileProvider
             ? PackageCache.GetOrLoad(file, readFlags, f => LoadPackageInner(f, readFlags))
             : LoadPackageInner(file, readFlags);
 
+        private static IPackage Tag(IPackage package, GameFile file)
+        {
+            if (package is AbstractUePackage p) p.SourceFile = file;
+            return package;
+        }
+
         private IPackage LoadPackageInner(GameFile file, EPackageReadFlags readFlags)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
@@ -661,13 +667,13 @@ namespace CUE4Parse.FileProvider
             {
                 case FPakEntry pakEntry:
                     var pakUasset = pakEntry.CreateStreamingReader();
-                    return new Package(pakUasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags);
+                    return Tag(new Package(pakUasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
                 case OsGameFile:
                     var uasset = file.CreateReader();
-                    return new Package(uasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags);
+                    return Tag(new Package(uasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     var ioUasset = ioStoreEntry.CreateStreamingReader();
-                    return new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags);
+                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags), file);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
             }
@@ -707,16 +713,16 @@ namespace CUE4Parse.FileProvider
                         ? await pakEntry.CreateReaderAsync().ConfigureAwait(false)
                         : pakEntry.CreateStreamingReader();
                     var uexpAr = uexp != null ? await uexp.CreateReaderAsync().ConfigureAwait(false) : null;
-                    return new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags);
+                    return Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
                 case OsGameFile:
                     var uasset = await file.CreateReaderAsync().ConfigureAwait(false);
                     var uexpArOs = uexp != null ? await uexp.CreateReaderAsync().ConfigureAwait(false) : null;
-                    return new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags);
+                    return Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
                         ? await ioStoreEntry.CreateReaderAsync().ConfigureAwait(false)
                         : ioStoreEntry.CreateStreamingReader();
-                    return new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags);
+                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags), file);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
             }
@@ -751,16 +757,16 @@ namespace CUE4Parse.FileProvider
                         ? await pakEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : pakEntry.CreateStreamingReader();
                     var uexpAr = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags);
+                    return Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
                 case OsGameFile:
                     var uasset = await file.CreateReaderAsync(cancellationToken).ConfigureAwait(false);
                     var uexpArOs = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags);
+                    return Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
                         ? await ioStoreEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : ioStoreEntry.CreateStreamingReader();
-                    return new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags);
+                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags), file);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
             }

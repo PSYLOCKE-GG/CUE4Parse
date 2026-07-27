@@ -117,6 +117,23 @@ namespace CUE4Parse.UE4.Objects.UObject
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T? Load<T>() where T : UExport => ResolvedObject?.Load<T>();
 
+        /// <summary>Loads the object at the requested fidelity; see <see cref="Assets.ResolvedObject.Load(EPackageReadFlags)"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public T? Load<T>(EPackageReadFlags readFlags) where T : UExport => ResolvedObject?.Load<T>(readFlags);
+
+        public bool TryLoad<T>(EPackageReadFlags readFlags, [MaybeNullWhen(false)] out T export) where T : UExport
+        {
+            try
+            {
+                export = Load<T>(readFlags);
+            }
+            catch
+            {
+                export = default;
+            }
+            return export != null;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryLoad<T>([MaybeNullWhen(false)] out T export) where T : UExport
         {

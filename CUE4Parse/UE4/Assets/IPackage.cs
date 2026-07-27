@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using CUE4Parse.FileProvider;
+using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Objects.UObject;
@@ -15,6 +16,9 @@ public interface IPackage
     public IFileProvider? Provider { get; }
     public TypeMappings? Mappings { get; }
     public EPackageReadFlags ReadFlags => EPackageReadFlags.None;
+
+    /// <summary>The file this package was loaded from, when it came through a provider's LoadPackage.</summary>
+    public GameFile? SourceFile => null;
 
     public FPackageFileSummary Summary { get; }
     public FNameEntrySerialized[] NameMap { get; }

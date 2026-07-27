@@ -210,12 +210,23 @@ namespace CUE4Parse.FileProvider
         public IPackage LoadPackage(string path);
 
         /// <summary>
+        /// Loads a package at the requested fidelity (see <see cref="EPackageReadFlags"/>).
+        /// The default implementations of the flag-taking overloads ignore the flags and fall
+        /// back to a full-fidelity load — which satisfies any metadata-only request, it is just
+        /// slower. <see cref="AbstractFileProvider"/> honors the flags.
+        /// </summary>
+        public IPackage LoadPackage(string path, EPackageReadFlags readFlags) => LoadPackage(path);
+
+        /// <summary>
         /// Loads and parses a Package from the passed file.
         /// Can throw various exceptions
         /// </summary>
         /// <param name="file">The package file</param>
         /// <returns>The parsed package content</returns>
         public IPackage LoadPackage(GameFile file);
+
+        /// <inheritdoc cref="LoadPackage(string, EPackageReadFlags)"/>
+        public IPackage LoadPackage(GameFile file, EPackageReadFlags readFlags) => LoadPackage(file);
 
         /// <summary>
         /// Asynchronously loads and parses a Package at the passed path.
@@ -225,6 +236,9 @@ namespace CUE4Parse.FileProvider
         /// <returns>The parsed package content</returns>
         public Task<IPackage> LoadPackageAsync(string path);
 
+        /// <inheritdoc cref="LoadPackage(string, EPackageReadFlags)"/>
+        public Task<IPackage> LoadPackageAsync(string path, EPackageReadFlags readFlags) => LoadPackageAsync(path);
+
         /// <summary>
         /// Asynchronously loads and parses a Package from the passed file.
         /// Can throw various exceptions
@@ -232,6 +246,9 @@ namespace CUE4Parse.FileProvider
         /// <param name="file">The package file</param>
         /// <returns>The parsed package content</returns>
         public Task<IPackage> LoadPackageAsync(GameFile file);
+
+        /// <inheritdoc cref="LoadPackage(string, EPackageReadFlags)"/>
+        public Task<IPackage> LoadPackageAsync(GameFile file, EPackageReadFlags readFlags) => LoadPackageAsync(file);
 
         /// <summary>
         /// Attempts to loads and parse a Package at the passed path.

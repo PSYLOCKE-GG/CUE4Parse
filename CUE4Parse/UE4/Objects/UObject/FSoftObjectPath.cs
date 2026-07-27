@@ -171,6 +171,47 @@ public readonly struct FSoftObjectPath : IUStruct
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public async Task<T?> TryLoadAsync<T>(IFileProvider provider) where T : UExport => await TryLoadAsync(provider) as T;
 
+    /// <summary>Loads the object at the requested fidelity; see <see cref="EPackageReadFlags"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T Load<T>(EPackageReadFlags readFlags) where T : UExport =>
+        Load(Owner?.Provider ?? throw new ParserException("Package was loaded without a IFileProvider"), readFlags) as T
+        ?? throw new ParserException("Loaded SoftObjectProperty but it was of wrong type");
+
+    public bool TryLoad<T>(EPackageReadFlags readFlags, [MaybeNullWhen(false)] out T export) where T : UExport
+    {
+        var provider = Owner?.Provider;
+        if (provider == null || AssetPathName.IsNone || string.IsNullOrEmpty(AssetPathName.Text))
+        {
+            export = null;
+            return false;
+        }
+
+        try
+        {
+            export = Load(provider, readFlags) as T;
+        }
+        catch
+        {
+            export = null;
+        }
+        return export != null;
+    }
+
+    public UExport Load(IFileProvider provider, EPackageReadFlags readFlags)
+    {
+        if (readFlags == EPackageReadFlags.None) return Load(provider);
+
+        var text = AssetPathName.Text;
+        var index = text.LastIndexOf('.');
+        var packagePath = index == -1 ? text : text[..index];
+        var objectName = index == -1 ? text.SubstringAfterLast('/') : text[(index + 1)..];
+
+        var asset = provider.LoadPackage(packagePath, readFlags).GetExport(objectName, provider.PathComparer.ToComparison());
+        return TryResolveSubObject(asset, out var export)
+            ? export
+            : throw new ParserException($"Could not resolve subobject '{SubPathString}' in '{AssetPathName.Text}'");
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public UExport Load(IFileProvider provider) => provider.LoadPackageObject(AssetPathName.Text);
 

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using CUE4Parse.FileProvider;
+using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Readers;
@@ -21,6 +22,7 @@ public abstract class AbstractUePackage : UObject, IPackage
     public IFileProvider? Provider { get; }
     public TypeMappings? Mappings => Provider?.MappingsForGame;
     public EPackageReadFlags ReadFlags { get; protected set; }
+    public GameFile? SourceFile { get; internal set; }
 
     public abstract FPackageFileSummary Summary { get; }
     public abstract FNameEntrySerialized[] NameMap { get; }
@@ -215,6 +217,31 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public UObject? Load() => ExportInfo?.Load() ?? GetDirectObject();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? Load<T>(EPackageReadFlags readFlags) where T : UObject => Load(readFlags) as T;
+
+    /// <summary>
+    /// Loads this object at the requested fidelity by loading its owning package with
+    /// <paramref name="readFlags"/> — a distinct package instance (and PackageCache entry)
+    /// from the full-fidelity one. Falls back to <see cref="Load()"/> when the flags are None,
+    /// the object is not a package export, or no provider is available; a full-fidelity read
+    /// satisfies any metadata-only request.
+    /// </summary>
+    public UObject? Load(EPackageReadFlags readFlags)
+    {
+        if (readFlags == EPackageReadFlags.None || ExportIndex < 0 || Package.Provider is not { } provider)
+            return Load();
+
+        // Reload via the originating file when known — Package.Name can be the "/Game/..."
+        // store form, which not every provider path table can round-trip.
+        var flagged = Package.SourceFile is { } file
+            ? provider.LoadPackage(file, readFlags)
+            : provider.LoadPackage(Package.Name, readFlags);
+
+        // Same file, same export map: the export index carries over to the flagged instance.
+        return flagged.GetExport(ExportIndex);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryLoad<T>([MaybeNullWhen(false)] out T export) where T : UObject
