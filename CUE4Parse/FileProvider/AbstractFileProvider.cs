@@ -808,7 +808,7 @@ namespace CUE4Parse.FileProvider
             {
                 package = LoadPackage(file);
             }
-            catch
+            catch (Exception e) when (!e.IsReadFailure())
             {
                 package = null;
             }
@@ -961,7 +961,7 @@ namespace CUE4Parse.FileProvider
             {
                 return LoadPackageObject<T>(pathName);
             }
-            catch
+            catch (Exception e) when (!e.IsReadFailure())
             {
                 return null;
             }
@@ -997,7 +997,7 @@ namespace CUE4Parse.FileProvider
             {
                 return await LoadPackageObjectAsync<T>(pathName, cancellationToken).ConfigureAwait(false);
             }
-            catch
+            catch (Exception e) when (!e.IsReadFailure())
             {
                 return null;
             }

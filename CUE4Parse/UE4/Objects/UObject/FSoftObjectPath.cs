@@ -190,7 +190,7 @@ public readonly struct FSoftObjectPath : IUStruct
         {
             export = Load(provider, readFlags) as T;
         }
-        catch
+        catch (Exception e) when (!e.IsReadFailure())
         {
             export = null;
         }

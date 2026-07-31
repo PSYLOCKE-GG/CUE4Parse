@@ -8,6 +8,7 @@ using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.IO.Objects;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
+using CUE4Parse.Utils;
 using Newtonsoft.Json;
 using UExport = CUE4Parse.UE4.Assets.Exports.UObject;
 
@@ -127,7 +128,7 @@ namespace CUE4Parse.UE4.Objects.UObject
             {
                 export = Load<T>(readFlags);
             }
-            catch
+            catch (Exception e) when (!e.IsReadFailure())
             {
                 export = default;
             }
@@ -186,7 +187,7 @@ namespace CUE4Parse.UE4.Objects.UObject
                     if (loadedObj != null)
                         return Task.FromResult<UExport?>(loadedObj);
                 }
-                catch
+                catch (Exception e) when (!e.IsReadFailure())
                 {
                 }
             }
