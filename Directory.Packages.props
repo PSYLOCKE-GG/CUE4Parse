@@ -4,7 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AssetRipper.TextureDecoder" Version="2.6.2" />
-    <PackageVersion Include="Blake3" Version="2.2.1" />
+    <PackageVersion Include="Blake3" Version="3.0.2" />
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="9.0.14" />
     <PackageVersion Include="ProDotNetZip" Version="1.20.0" />
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.2" />
