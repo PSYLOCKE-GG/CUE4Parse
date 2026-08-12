@@ -5,7 +5,7 @@ using CUE4Parse.Utils;
 
 namespace CUE4Parse.UE4.IO;
 
-public sealed class IoStoreEntryStream : Stream
+public sealed class IoStoreEntryStream : Stream, ICloneable
 {
     private readonly IoStoreReader _reader;
     private readonly long _entryOffset;
@@ -23,6 +23,21 @@ public sealed class IoStoreEntryStream : Stream
         _entrySize = entry.Size;
         _compressionBlockSize = _reader.TocResource.Header.CompressionBlockSize;
     }
+
+    private IoStoreEntryStream(IoStoreEntryStream other)
+    {
+        _reader = other._reader;
+        _entryOffset = other._entryOffset;
+        _entrySize = other._entrySize;
+        _compressionBlockSize = other._compressionBlockSize;
+        _position = other._position;
+    }
+
+    /// <summary>
+    /// Returns a stream over the same entry with its own cursor. Lazily deserialized exports
+    /// each clone the package archive and seek independently, so they must not share a cursor.
+    /// </summary>
+    public object Clone() => new IoStoreEntryStream(this);
 
     public void ReleaseCache()
     {

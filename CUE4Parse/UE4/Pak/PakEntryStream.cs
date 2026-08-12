@@ -9,7 +9,7 @@ namespace CUE4Parse.UE4.Pak;
 /// A read-only Stream backed by a pak entry that reads on demand via partial extraction.
 /// Avoids loading the entire entry into memory — critical for multi-GB files like shader archives.
 /// </summary>
-public sealed class PakEntryStream : Stream
+public sealed class PakEntryStream : Stream, ICloneable
 {
     private readonly FPakEntry _entry;
     private long _position;
@@ -19,6 +19,12 @@ public sealed class PakEntryStream : Stream
         _entry = entry;
         _position = 0;
     }
+
+    /// <summary>
+    /// Returns a stream over the same entry with its own cursor. Lazily deserialized exports
+    /// each clone the package archive and seek independently, so they must not share a cursor.
+    /// </summary>
+    public object Clone() => new PakEntryStream(_entry) { _position = _position };
 
     public override bool CanRead => true;
     public override bool CanSeek => true;

@@ -49,29 +49,56 @@ namespace CUE4Parse.UE4.Readers
             _ => true,
         };
 
+        // ReadAt must leave the cursor where it found it: callers such as FByteBulkData read a
+        // payload out of the archive an export is still walking. The random-access overrides
+        // never touch the cursor, so the seeking fallbacks restore it.
         public override int ReadAt(long position, byte[] buffer, int offset, int count)
         {
+            var previous = Position;
             Position = position;
             CheckReadSize(count);
 
-            return Read(buffer, offset, count);
+            try
+            {
+                return Read(buffer, offset, count);
+            }
+            finally
+            {
+                Position = previous;
+            }
         }
 
-        public override Task<int> ReadAtAsync(long position, byte[] buffer, int offset, int count,
+        public override async Task<int> ReadAtAsync(long position, byte[] buffer, int offset, int count,
             CancellationToken cancellationToken = default)
         {
+            var previous = Position;
             Position = position;
             CheckReadSize(count);
 
-            return ReadAsync(buffer, offset, count, cancellationToken);
+            try
+            {
+                return await ReadAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                Position = previous;
+            }
         }
 
-        public override ValueTask<int> ReadAtAsync(long position, Memory<byte> memory, CancellationToken cancellationToken = default)
+        public override async ValueTask<int> ReadAtAsync(long position, Memory<byte> memory, CancellationToken cancellationToken = default)
         {
+            var previous = Position;
             Position = position;
             CheckReadSize(memory.Length);
 
-            return ReadAsync(memory, cancellationToken);
+            try
+            {
+                return await ReadAsync(memory, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                Position = previous;
+            }
         }
 
         public virtual byte[] ReadBytes(int length)

@@ -69,7 +69,9 @@ namespace CUE4Parse.UE4.AssetRegistry.Objects
             {
                 ExtensionText = Ar.ReadFString();
             }
-            if (Ar.Header.Version >= FAssetRegistryVersionType.AssetPackageDataHasPackageLocation)
+            // NetEase writes one more byte here. Stock UE does not, at any registry version:
+            // a UE 5.8 registry (MemoryMappedTagDataStore) ends right after the extension text.
+            if (Ar.Game is EGame.GAME_MarvelRivals && Ar.Header.Version >= FAssetRegistryVersionType.AssetPackageDataHasPackageLocation)
             {
                 Ar.Position += 1;
             }
