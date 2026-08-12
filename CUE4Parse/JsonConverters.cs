@@ -2637,6 +2637,12 @@ public class FAssetPackageDataConverter : JsonConverter<FAssetPackageData>
             serializer.Serialize(writer, value.ImportedClasses);
         }
 
+        if (!string.IsNullOrEmpty(value.ExtensionText))
+        {
+            writer.WritePropertyName(nameof(value.ExtensionText));
+            writer.WriteValue(value.ExtensionText);
+        }
+
         writer.WriteEndObject();
     }
 

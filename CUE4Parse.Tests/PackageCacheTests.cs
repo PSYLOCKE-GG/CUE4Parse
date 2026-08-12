@@ -158,6 +158,22 @@ public class PackageCacheTests
     }
 
     [Fact]
+    public void RemoveDropsOnlyRequestedResidency()
+    {
+        var cache = new PackageCache { Enabled = true };
+        var a = new FakeGameFile("Game/A.uasset");
+        var b = new FakeGameFile("Game/B.uasset");
+        var firstA = cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage());
+        var firstB = cache.GetOrLoad(b, EPackageReadFlags.None, _ => new FakePackage());
+
+        Assert.True(cache.Remove(a));
+        Assert.False(cache.Remove(a));
+        Assert.NotSame(firstA, cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage()));
+        Assert.Same(firstB, cache.GetOrLoad(b, EPackageReadFlags.None, _ => new FakePackage()));
+        Assert.Equal(0, cache.EvictionCount);
+    }
+
+    [Fact]
     public void SameFileDifferentReadFlagsAreDistinctEntries()
     {
         var cache = new PackageCache { Enabled = true };

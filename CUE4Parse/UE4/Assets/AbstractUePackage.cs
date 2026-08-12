@@ -11,6 +11,7 @@ using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.Utils;
 using Newtonsoft.Json;
 
 namespace CUE4Parse.UE4.Assets;
@@ -250,7 +251,7 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
         {
             export = Load<T>();
         }
-        catch
+        catch (Exception e) when (!e.IsReadFailure())
         {
             export = null;
         }
@@ -264,7 +265,7 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
         {
             export = Load();
         }
-        catch
+        catch (Exception e) when (!e.IsReadFailure())
         {
             export = null;
         }
@@ -281,7 +282,7 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
         {
             return Task.FromResult(Load());
         }
-        catch
+        catch (Exception e) when (!e.IsReadFailure())
         {
             return Task.FromResult<UObject?>(null);
         }

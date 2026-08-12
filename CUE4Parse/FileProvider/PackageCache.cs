@@ -28,6 +28,10 @@ public class PackageCache
     public long HitCount => Interlocked.Read(ref _hits);
     public long MissCount => Interlocked.Read(ref _misses);
     public long EvictionCount => Interlocked.Read(ref _evictions);
+    public int ResidentCount
+    {
+        get { lock (_lock) return _residents.Count; }
+    }
 
     // Reference equality on GameFile keeps identical paths from different containers distinct;
     // flags participate so a metadata-only load never satisfies a full-fidelity one.
@@ -62,6 +66,18 @@ public class PackageCache
         {
             _residents.Clear();
             _lru.Clear();
+        }
+    }
+
+    /// <summary>Evicts one resident package while leaving unrelated hot packages intact.</summary>
+    public bool Remove(GameFile file, EPackageReadFlags readFlags = EPackageReadFlags.None)
+    {
+        var key = new Key(file, readFlags);
+        lock (_lock)
+        {
+            if (!_residents.Remove(key, out var node)) return false;
+            _lru.Remove(node);
+            return true;
         }
     }
 
