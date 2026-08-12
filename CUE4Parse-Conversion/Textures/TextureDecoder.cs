@@ -312,7 +312,7 @@ public static class TextureDecoder
                 }
                 else
                 {
-                    data = BCDecoder.BC1(bytes, sizeX, sizeY, sizeZ);
+                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC1);
                 }
                 colorType = EPixelFormat.PF_R8G8B8A8;
                 break;
@@ -325,7 +325,7 @@ public static class TextureDecoder
                 }
                 else
                 {
-                    data = BCDecoder.BC2(bytes, sizeX, sizeY, sizeZ);
+                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC2);
                 }
                 colorType = EPixelFormat.PF_R8G8B8A8;
                 break;
@@ -337,7 +337,7 @@ public static class TextureDecoder
                 }
                 else
                 {
-                    data = BCDecoder.BC3(bytes, sizeX, sizeY, sizeZ);
+                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC3);
                 }
                 colorType = EPixelFormat.PF_R8G8B8A8;
                 break;
@@ -380,7 +380,7 @@ public static class TextureDecoder
                 if (UseAssetRipperTextureDecoder)
                     Bc4.Decompress<ColorBGRA<byte>, byte>(bytes, sizeX, sizeY * sizeZ, out data);
                 else
-                    data = BCDecoder.BC4(bytes, sizeX, sizeY, sizeZ);
+                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC4);
                 colorType = EPixelFormat.PF_B8G8R8A8;
                 break;
             case EPixelFormat.PF_BC5:
@@ -393,7 +393,7 @@ public static class TextureDecoder
                 else
                 {
                     // Blue channel is already restored in BCDecoder.BC5
-                    data = BCDecoder.BC5(bytes, sizeX, sizeY, sizeZ);
+                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC5);
                 }
                 colorType = EPixelFormat.PF_B8G8R8A8;
                 break;
@@ -401,7 +401,7 @@ public static class TextureDecoder
                 if (UseAssetRipperTextureDecoder)
                     Bc6h.Decompress<ColorRGBA<byte>, byte>(bytes, sizeX, sizeY, false, out data);
                 else
-                    data = BCDecoder.BC6H(bytes, sizeX, sizeY, sizeZ);
+                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC6H);
                 colorType = EPixelFormat.PF_R8G8B8A8;
                 break;
             case EPixelFormat.PF_BC6H_Signed:
