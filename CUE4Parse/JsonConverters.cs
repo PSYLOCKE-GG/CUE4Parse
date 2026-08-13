@@ -1740,6 +1740,12 @@ public class FSkeletalMaterialConverter : JsonConverter<FSkeletalMaterial>
         writer.WritePropertyName("UVChannelData");
         serializer.Serialize(writer, value.UVChannelData);
 
+        if (value.MaterialTags is { } materialTags)
+        {
+            writer.WritePropertyName("MaterialTags");
+            serializer.Serialize(writer, materialTags);
+        }
+
         writer.WriteEndObject();
     }
 

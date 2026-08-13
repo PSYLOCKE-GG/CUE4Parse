@@ -17,6 +17,9 @@ public class FSkeletalMaterial
     public FMeshUVChannelInfo? UVChannelData;
     public FPackageIndex OverlayMaterialInterface;
 
+    /// <summary>Per-slot gameplay tags. Marvel Rivals only; null on every other game.</summary>
+    public FGameplayTagContainer? MaterialTags;
+
     public FSkeletalMaterial(FAssetArchive Ar)
     {
         Material = new FPackageIndex(Ar);
@@ -54,7 +57,7 @@ public class FSkeletalMaterial
         {
             case GAME_MarvelRivals:
                 if (Ar.Versions.ArbitraryVersion != null && Ar.Versions.ArbitraryVersion < MarvelRivalsVersions.SkeletalMaterialGameplayTags) break;
-                _ = new FGameplayTagContainer(Ar);
+                MaterialTags = new FGameplayTagContainer(Ar);
                 break;
             case GAME_FragPunk or GAME_DaysGone or GAME_WorldofJadeDynasty or GAME_AssaultFireFuture:
                 Ar.Position += 4;
