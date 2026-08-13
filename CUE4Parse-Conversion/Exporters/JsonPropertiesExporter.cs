@@ -4,11 +4,18 @@ using Newtonsoft.Json;
 
 namespace CUE4Parse_Conversion.Exporters;
 
-public class JsonPropertiesExporter(UObject obj) : ExporterBase(obj, "JsonProperties")
+public class JsonPropertiesExporter : ExporterBase
 {
+    private readonly UObject _obj;
+
+    public JsonPropertiesExporter(UObject obj) : base(obj, "JsonProperties")
+    {
+        _obj = obj;
+    }
+
     protected override IReadOnlyList<ExportFile> BuildExportFiles(CancellationToken ct = default)
     {
-        var json = JsonConvert.SerializeObject(obj, Formatting.Indented);
+        var json = JsonConvert.SerializeObject(_obj, Formatting.Indented);
         return [new ExportFile("json", Encoding.UTF8.GetBytes(json))];
     }
 }
