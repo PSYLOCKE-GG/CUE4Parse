@@ -399,10 +399,18 @@ public static class TextureDecoder
                 break;
             case EPixelFormat.PF_BC6H:
                 if (UseAssetRipperTextureDecoder)
+                {
                     Bc6h.Decompress<ColorRGBA<byte>, byte>(bytes, sizeX, sizeY, false, out data);
+                    colorType = EPixelFormat.PF_R8G8B8A8;
+                }
                 else
-                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC6H);
-                colorType = EPixelFormat.PF_R8G8B8A8;
+                {
+                    // The managed BC6H decoder clamps to 8-bit LDR, which destroys the HDR
+                    // range that cubemap/IBL consumers need. Decode through detex to keep
+                    // half-float output.
+                    data = Detex.DecodeDetexLinear(bytes, sizeX, sizeY * sizeZ, true, DetexTextureFormat.DETEX_TEXTURE_FORMAT_BPTC_FLOAT, DetexPixelFormat.DETEX_PIXEL_FORMAT_FLOAT_RGBX16);
+                    colorType = EPixelFormat.PF_FloatRGBA;
+                }
                 break;
             case EPixelFormat.PF_BC6H_Signed:
                 Bc6h.Decompress<ColorRGBA<byte>, byte>(bytes, sizeX, sizeY, true, out data);
