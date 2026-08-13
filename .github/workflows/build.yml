@@ -27,13 +27,13 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Restore dependencies
-        run: dotnet restore CUE4Parse.sln /p:Platform="Any CPU"
+        run: dotnet restore CUE4Parse.slnx /p:Platform="Any CPU"
 
       - name: Build
-        run: dotnet build CUE4Parse.sln --configuration Release --no-restore /p:Platform="Any CPU"
+        run: dotnet build CUE4Parse.slnx --configuration Release --no-restore /p:Platform="Any CPU"
 
       - name: Pack NuGet packages
-        run: dotnet pack CUE4Parse.sln --configuration Release --no-build --output ./artifacts /p:Platform="Any CPU"
+        run: dotnet pack CUE4Parse.slnx --configuration Release --no-build --output ./artifacts /p:Platform="Any CPU"
 
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v4

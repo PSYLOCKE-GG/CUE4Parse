@@ -80,18 +80,18 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Restore dependencies
-        run: dotnet restore CUE4Parse.sln /p:Platform="Any CPU"
+        run: dotnet restore CUE4Parse.slnx /p:Platform="Any CPU"
 
       - name: Build (Linux ARM64 cross-compile)
         if: matrix.os == 'linux' && matrix.arch == 'aarch64'
         run: |
           export CMAKE_C_COMPILER=aarch64-linux-gnu-gcc
           export CMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
-          dotnet build CUE4Parse.sln --configuration Release --no-restore /p:Platform="Any CPU"
+          dotnet build CUE4Parse.slnx --configuration Release --no-restore /p:Platform="Any CPU"
 
       - name: Build
         if: ${{ !(matrix.os == 'linux' && matrix.arch == 'aarch64') }}
-        run: dotnet build CUE4Parse.sln --configuration Release --no-restore /p:Platform="Any CPU"
+        run: dotnet build CUE4Parse.slnx --configuration Release --no-restore /p:Platform="Any CPU"
 
       - name: Collect native binaries (Windows)
         if: matrix.os == 'windows'
