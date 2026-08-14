@@ -16,6 +16,7 @@ using CUE4Parse.GameTypes.FunkoFusion.Encryption.Aes;
 using CUE4Parse.GameTypes.INikki.Encryption.Aes;
 using CUE4Parse.GameTypes.MindsEye.Encryption.Aes;
 using CUE4Parse.GameTypes.NetEase.MAR.Encryption.Aes;
+using CUE4Parse.GameTypes.Theia.Encryption;
 using CUE4Parse.GameTypes.NFS.Mobile.Encryption.Aes;
 using CUE4Parse.GameTypes.NMZ.Encryption.Aes;
 using CUE4Parse.GameTypes.OPA.Encryption.Aes;
@@ -102,6 +103,7 @@ namespace CUE4Parse.FileProvider.Vfs
                 GAME_BloodBowl3 => BloodBowl3Aes.BloodBowl3Decrypt,
                 GAME_AssaultFireFuture => AssaultFireFutureAes.AssaultFireFutureDecrypt,
                 GAME_ArcRaiders => ArcRaidersAes.ArcRaidersDecrypt,
+                GAME_MARVELTokonFightingSouls => TheiaAes.TheiaPassthrough,
                 GAME_RocoKingdomWorld => RocoKingdomWorldAes.RocoKingdomWorldDecrypt,
                 GAME_DragonSwordAwakening => DragonSwordAes.DragonSwordDecrypt,
                 GAME_eBaseballProSpirit => ProSpiEncryption.ProSpiDecrypt,
