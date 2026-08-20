@@ -16,7 +16,7 @@ public sealed class SkeletalMeshExporter(USkeletalMesh originalMesh) : MeshExpor
             originalMesh.PopulateMorphTargetVerticesData();
         }
 
-        using var dto = new SkeletalMeshDto(originalMesh, Session.Options.MeshQuality, Session.Options.NaniteMeshFormat);
+        using var dto = new SkeletalMeshDto(originalMesh, Session.Options.MeshQuality, Session.Options.NaniteMeshFormat, Session.Options.ExportMorphTargets);
         if (dto.LODs.Count == 0)
         {
             throw new Exception("Skeletal mesh has no LODs");
@@ -34,6 +34,6 @@ public sealed class SkeletalMeshExporter(USkeletalMesh originalMesh) : MeshExpor
         }
 
         var materialPaths = EnqueueMaterials(dto.Materials);
-        return format.BuildSkeletalMesh(ObjectName, Session.Options, dto, materialPaths);
+        return format.BuildSkeletalMesh(ObjectName, ObjectPath, Session.Options, dto, materialPaths);
     }
 }
