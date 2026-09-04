@@ -67,7 +67,9 @@ public class FTexture2DMipMap
 
     public bool EnsureValidBulkData(UTextureAllMipDataProviderFactory? provider, int mipLevel)
     {
-        if (BulkData?.Data is { Length: > 0 })
+        // Availability, not the bytes: GetMip / GetFirstMipIndex ask this for every mip a
+        // caller walks, and a size query must not read (and decompress) the payload.
+        if (BulkData?.IsAvailable() == true)
             return true;
 
         switch (provider)
