@@ -64,6 +64,29 @@ public abstract class TBulkData<T> where T: struct
     public virtual int GetDataSize() => Header.ElementCount * Unsafe.SizeOf<T>();
 
     /// <summary>
+    /// True when the payload can be read: it is already loaded and non-empty, or its container
+    /// (inline, .ubulk, .uptnl, ...) is present. Resolves the container without reading the payload,
+    /// so a caller that only needs to know whether a mip exists does not pull its bytes.
+    /// </summary>
+    public bool IsAvailable()
+    {
+        if (_data is { IsValueCreated: true })
+            return _data.Value is { Length: > 0 };
+        if (_savedAr is null)
+            return _data is not null; // a deferred in-memory payload (e.g. a mip data provider)
+        if (Header.SizeOnDisk == 0 || BulkDataFlags.HasFlag(BULKDATA_Unused))
+            return false;
+        try
+        {
+            return GetBulkArchive(out _, out _);
+        }
+        catch (ParserException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Reads bulk data once without storing it in this instance.
     /// If data is already cached, optionally returns a copy of a cached data.
     /// </summary>
