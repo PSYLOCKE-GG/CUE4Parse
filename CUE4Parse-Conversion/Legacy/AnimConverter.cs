@@ -24,7 +24,7 @@ namespace CUE4Parse_Conversion.Animations
 
         public static CAnimSet ConvertAnims(this UAnimationAsset asset)
         {
-            if (!asset.Skeleton.TryLoad<USkeleton>(out var skeleton))
+            if (asset.Skeleton == null || !asset.Skeleton.TryLoad<USkeleton>(out var skeleton))
                 throw new ArgumentException("Failed to load skeleton for animation asset " + asset.Name);
 
             return asset switch
@@ -245,6 +245,9 @@ namespace CUE4Parse_Conversion.Animations
 
                     break;
                 }
+                // bForceRootLock check is for the case when AnimationSequence doesn't have any animation data, but we shouldn't throw
+                case null when animSequence.CompressedCurveData is { FloatCurves.Length: > 0 } || animSequence.GetOrDefault<bool>("bForceRootLock"):
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException("Unsupported compressed data type " + animSequence.CompressedDataStructure?.GetType().Name);
             }
@@ -274,7 +277,7 @@ namespace CUE4Parse_Conversion.Animations
                     break;
                 default:
                 {
-                    var refPoseSkel = refPoseSeq?.Skeleton.Load<USkeleton>() ?? skeleton;
+                    var refPoseSkel = refPoseSeq?.Skeleton?.Load<USkeleton>() ?? skeleton;
                     refAnimSet = refPoseSkel.ConvertAnims(refPoseSeq);
 
                     referencePoses = refPoseType switch

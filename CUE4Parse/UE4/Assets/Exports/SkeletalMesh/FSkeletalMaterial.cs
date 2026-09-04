@@ -19,6 +19,10 @@ public class FSkeletalMaterial
 
     /// <summary>Per-slot gameplay tags. Marvel Rivals only; null on every other game.</summary>
     public FGameplayTagContainer? MaterialTags;
+    public FSkeletalMaterial(FPackageIndex material)
+    {
+        Material = material;
+    }
 
     public FSkeletalMaterial(FAssetArchive Ar)
     {

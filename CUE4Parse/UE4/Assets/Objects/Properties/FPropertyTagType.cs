@@ -12,6 +12,7 @@ using CUE4Parse.UE4.Assets.Utils;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.i18N;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.UE4.Versions;
 using CUE4Parse.Utils;
 using Newtonsoft.Json;
 
@@ -168,7 +169,7 @@ public abstract class FPropertyTagType
             "ArrayProperty" => new ArrayProperty(Ar, tagData, type, size),
             "AssetObjectProperty" or "AssetClassProperty" => new AssetObjectProperty(Ar, type),
             "BoolProperty" => new BoolProperty(Ar, tagData, type),
-            "ByteProperty" => (tagData?.EnumName != null && !tagData.EnumName.Equals("None", StringComparison.OrdinalIgnoreCase)) || (type is ReadType.MAP && Ar.TestReadFName())
+            "ByteProperty" => (tagData?.EnumName != null && !tagData.EnumName.Equals("None", StringComparison.OrdinalIgnoreCase)) || (type is ReadType.MAP && Ar.TestReadFName()) || (Ar.Game < GAME_UE4_0 && Ar.Ver > EUnrealEngineObjectUE3Version.PropertyFlagsSizeExpandedTo64Bits && size != 1)
                 ? (FPropertyTagType?) new EnumProperty(Ar, tagData, type)
                 : new ByteProperty(Ar, type),
             "ClassProperty" => new ClassProperty(Ar, type),

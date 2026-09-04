@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.FileProvider.Vfs;
+using CUE4Parse.GameTypes.RL.Encryption.Aes;
 using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Assets.Exports;
@@ -212,10 +213,8 @@ namespace CUE4Parse.FileProvider
                 : throw new KeyNotFoundException($"There is no game file with the path \"{path}\"");
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetGameFile(string path, [MaybeNullWhen(false)] out GameFile file)
-        {
-            return TryGetGameFile(path, Files, out file);
-        }
+        public bool TryGetGameFile(string path, [MaybeNullWhen(false)] out GameFile file) => 
+            TryGetGameFile(path, Files, out file);
 
         public int LoadLocalization(ELanguage language = ELanguage.English, CancellationToken cancellationToken = default)
             => LoadLocalization(GetLanguageCode(language), cancellationToken);
@@ -821,6 +820,26 @@ namespace CUE4Parse.FileProvider
         public IReadOnlyDictionary<string, byte[]> SavePackage(string path) => SavePackage(this[path]);
         public IReadOnlyDictionary<string, byte[]> SavePackage(GameFile file)
         {
+            // decompress or decrypt the package before returning bytes
+            if (Versions.Game < GAME_UE4_0)
+            {
+                if (file.IsUePackage)
+                {
+                    using var upkAr = file.CreateReader();
+                    var dictdecrypted = new Dictionary<string, byte[]> { { file.Path, Package.GetDecryptedData(upkAr) } };
+                    return dictdecrypted;
+                }
+
+                if (file.Extension == "ewem")
+                {
+                    using var upkAr = file.CreateReader();
+                    var data = SaveAsset(file);
+                    RocketLeagueAes.Decrypt(data, 0, 0, false, out byte[] decryptedData);
+                    var dictdecrypted = new Dictionary<string, byte[]> { { file.Path, decryptedData } };
+                    return dictdecrypted;
+                }
+            }
+
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls, true);
 
             var dict = new Dictionary<string, byte[]> { { file.Path, file.Read() } };

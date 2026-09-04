@@ -8,6 +8,7 @@ using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
+using CUE4Parse.GameTypes.Tencent.GangstarMirageCity.Objects.Meshes;
 using Newtonsoft.Json;
 
 namespace CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
@@ -17,7 +18,7 @@ public partial class USkeletalMesh : UObject
     public FBoxSphereBounds ImportedBounds { get; private set; }
     public FSkeletalMaterial[] SkeletalMaterials { get; private set; }
     public FReferenceSkeleton ReferenceSkeleton { get; private set; }
-    public FSkeletalMeshLODGroupSettings[] LODInfo { get; private set; }
+    public FSkeletalMeshLODGroupSettings[]? LODInfo { get; private set; }
 
     private FStaticLODModel[]? _lodModels;
     public FStaticLODModel[]? LODModels
@@ -49,7 +50,7 @@ public partial class USkeletalMesh : UObject
     {
         if (Ar.Game == GAME_WorldofJadeDynasty) Ar.Position += 8;
         base.Deserialize(Ar, validPos);
-        LODInfo = GetOrDefault<FSkeletalMeshLODGroupSettings[]?>(nameof(LODInfo)) ?? GetOrDefault<FSkeletalMeshLODGroupSettings[]>("SourceModels", []); ;
+        LODInfo = GetOrDefault<FSkeletalMeshLODGroupSettings[]?>(nameof(LODInfo)) ?? GetOrDefault<FSkeletalMeshLODGroupSettings[]>("SourceModels");
 
         bHasVertexColors = GetOrDefault<bool>(nameof(bHasVertexColors));
         NumVertexColorChannels = GetOrDefault<byte>(nameof(NumVertexColorChannels));
@@ -61,18 +62,55 @@ public partial class USkeletalMesh : UObject
         AssetUserData = GetOrDefault(nameof(AssetUserData), Array.Empty<FPackageIndex>());
 
         var stripDataFlags = new FStripDataFlags(Ar);
+
+        if (Ar.Game == GAME_Dishonored && Ar.Ver >= EUnrealEngineObjectUE3Version.ADDED_SCALES2)
+        {
+            Ar.SkipFName(); // m_BoneName
+            if (Ar.Ver >= EUnrealEngineObjectUE3Version.OPTIMIZED_ANIMSEQ) Ar.Position += sizeof(float) * 3; // FVector - m_Offset
+            Ar.Position += sizeof(float); // float - m_fRadius
+        }
+
         ImportedBounds = new FBoxSphereBounds(Ar);
 
-        SkeletalMaterials = Ar.ReadArray(() => new FSkeletalMaterial(Ar));
-        Materials = new FPackageIndex?[SkeletalMaterials.Length];
-        for (var i = 0; i < Materials.Length; i++)
+        if (Ar.Ver < EUnrealEngineObjectUE3Version.DeprecatedPointer)
         {
-            Materials[i] = SkeletalMaterials[i].Material;
+            Ar.Position += sizeof(int); // FPackageIndex
+        }
+
+        if (Ar.Game < GAME_UE4_0)
+        {
+            Materials = Ar.ReadArray(() => new FPackageIndex(Ar));
+
+            SkeletalMaterials = new FSkeletalMaterial[Materials.Length];
+            for (var i = 0; i < Materials.Length; i++)
+            {
+                SkeletalMaterials[i] = new FSkeletalMaterial(Materials[i]);
+            }
+
+            Ar.Position += sizeof(float) * 3; // FVector - MeshOrigin
+            Ar.Position += sizeof(float) * 3; // FRotator - RotOrigin
+            if (Ar.Game == GAME_Dishonored && Ar.Ver >= EUnrealEngineObjectUE3Version.FIXCLAMP_NON_TONEMAP)
+            {
+                Ar.SkipArray<byte>();
+            }
+        }
+        else
+        {
+            SkeletalMaterials = Ar.ReadArray(() => new FSkeletalMaterial(Ar));
+            Materials = new FPackageIndex?[SkeletalMaterials.Length];
+            for (var i = 0; i < Materials.Length; i++)
+            {
+                Materials[i] = SkeletalMaterials[i].Material;
+            }
         }
 
         if (Ar.Game is GAME_LordOfMysteries) CustomGameData = Ar.ReadArray(() => new FSkeletalMaterial(Ar));
 
         ReferenceSkeleton = new FReferenceSkeleton(Ar);
+        if (Ar.Game < GAME_UE4_0)
+        {
+            Ar.Position += sizeof(int); // int - SkeletalDepth
+        }
 
         // Everything from here on is LOD render data plus fix-ups that only exist to
         // patch it; a partial skip inside the LOD block would desync the archive.
@@ -146,16 +184,33 @@ public partial class USkeletalMesh : UObject
                     LODModels = LODModels.Concat(fallbackLODModels).ToArray();
                 }
 
-                if (Ar.Game is GAME_RocoKingdomWorld)
+                switch (Ar.Game)
                 {
-                    foreach (var lod in LODModels)
-                    {
-                        for (int i = 0; i < lod.VertexBufferGPUSkin.VertsFloat.Length; i++)
+                    case GAME_GangstarMirageCity:
+                        foreach (var lod in LODModels)
                         {
-                            var vert = lod.VertexBufferGPUSkin.VertsFloat[i];
-                            vert.Pos = ImportedBounds.BoxExtent * vert.Pos + ImportedBounds.Origin;
+                            if (lod.AdditionalBuffer is not FGangstarPositionVertexBuffer positions || lod.VertexBufferGPUSkin?.VertsFloat == null)
+                                continue;
+
+                            positions.Decode(ImportedBounds);
+                            for (var i = 0; i < lod.VertexBufferGPUSkin.VertsFloat.Length; i++)
+                            {
+                                lod.VertexBufferGPUSkin.VertsFloat[i].Pos = positions.Verts[i];
+                            }
                         }
-                    }
+                        break;
+                    case GAME_RocoKingdomWorld:
+                        foreach (var lod in LODModels)
+                        {
+                            if (lod.VertexBufferGPUSkin?.VertsFloat == null)
+                                continue;
+                            for (var i = 0; i < lod.VertexBufferGPUSkin.VertsFloat.Length; i++)
+                            {
+                                var vert = lod.VertexBufferGPUSkin.VertsFloat[i];
+                                vert.Pos = ImportedBounds.BoxExtent * vert.Pos + ImportedBounds.Origin;
+                            }
+                        }
+                        break;
                 }
 
                 if (Ar.Game >= GAME_UE5_5 || Ar.Game is GAME_SilverPalace)
@@ -195,12 +250,42 @@ public partial class USkeletalMesh : UObject
             Ar.Position += 12 * length; // TMap<FName, int32> DummyNameIndexMap
         }
 
+        if (Ar.Ver >= EUnrealEngineObjectUE3Version.SKELMESH_BONE_KDOP && Ar.Game < GAME_UE4_0)
+        {
+            // this is not an array of ints, it's a complex FPerPolyBoneCollisionData struct
+            Ar.SkipArray<int>(); // PerPolyBoneKDOPs
+        }
+
+        if (Ar.Ver >= EUnrealEngineObjectUE3Version.ADDED_EXTRA_SKELMESH_VERTEX_INFLUENCE_MAPPING && Ar.Game < GAME_UE4_0)
+        {
+            Ar.SkipArray(Ar.SkipFString); // BoneBreakNames
+            if (Ar.Ver >= EUnrealEngineObjectUE3Version.ADDED_EXTRA_SKELMESH_VERTEX_INFLUENCE_CUSTOM_MAPPING)
+            {
+                Ar.SkipArray<int>(); // BoneBreakOptions
+            }
+        }
+
+        if (Ar.Ver >= EUnrealEngineObjectUE3Version.APEX_CLOTHING && Ar.Game < GAME_UE4_0)
+        {
+            var ApexClothingAssets = Ar.Read<int>();
+            for (var i = 0; i < ApexClothingAssets; i++)
+            {
+                var bAssetValid = Ar.ReadBoolean();
+
+                if (bAssetValid)
+                {
+                    Ar.SkipArray<byte>(); // NameBuffer
+                    Ar.SkipArray<byte>(); // Buffer
+                }
+            }
+        }
+
         switch (Ar.Game)
         {
             case GAME_Back4Blood:
                 Ar.Position += 8;
                 break;
-            case >= EGame.GAME_UE4_0:
+            case >= GAME_UE4_0:
                 _ = Ar.ReadArray(() => new FPackageIndex(Ar)); // dummyObjs
                 break;
         }
@@ -222,7 +307,7 @@ public partial class USkeletalMesh : UObject
             }
         }
 
-        if (Ar.Ver >= EUnrealEngineObjectUE3Version.SKELETAL_MESH_SIMPLIFICATION && Ar.Game < EGame.GAME_UE4_0)
+        if (Ar.Ver >= EUnrealEngineObjectUE3Version.SKELETAL_MESH_SIMPLIFICATION && Ar.Game < GAME_UE4_0)
         {
             var bHaveSourceData = Ar.ReadBoolean();
             if (bHaveSourceData)
