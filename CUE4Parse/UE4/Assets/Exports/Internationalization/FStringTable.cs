@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using CUE4Parse.GameTypes.CodeVein2.Encryption;
 using CUE4Parse.GameTypes.MarvelRivals;
 using CUE4Parse.UE4.Assets.Readers;
@@ -21,7 +21,6 @@ public class FStringTable
         {
             if (Ar.Game is GAME_CodeVein2) return CodeVein2StringEncryption.CodeVein2EncryptedFString(Ar, ECV2DecryptionMode.StringTable);
             var value = Ar.ReadFString();
-
             if (Ar.Game == GAME_MarvelRivals)
             {
                 if (Ar.Versions.ArbitraryVersion == null ||
@@ -33,6 +32,10 @@ public class FStringTable
                 {
                     Ar.Position += 4;
                 }
+            }
+            else if (Ar.Game == GAME_TheBloodofDawnwalker)
+            {
+                Ar.SkipFString();
             }
 
             if (Ar.Game == GAME_LostRecordsBloomAndRage)
