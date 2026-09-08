@@ -192,6 +192,11 @@ public class UTexture : UUnrealMaterial, IAssetUserData
         }
     }
 
+    /// <summary>Returns the first serialized mip without opening its bulk payload.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public FTexture2DMipMap? GetFirstMipMetadata() =>
+        PlatformData.Mips.Length > 0 ? PlatformData.Mips[0] : null;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public FTexture2DMipMap? GetMip(int index) =>
         index >= 0 && index < PlatformData.Mips.Length && PlatformData.Mips[index].EnsureValidBulkData(MipDataProvider, index)
