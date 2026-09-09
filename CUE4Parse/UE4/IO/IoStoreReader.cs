@@ -397,7 +397,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
 
     [ThreadStatic] private static byte[]? _tlsCompressedBuffer;
 
-    internal byte[] DecompressBlock(int blockIndex)
+    internal IoStoreBlock DecompressBlock(int blockIndex)
     {
         ref var compressionBlock = ref TocResource.CompressionBlocks[blockIndex];
 
@@ -420,35 +420,34 @@ public partial class IoStoreReader : AbstractAesVfsReader
 
         reader.ReadAt(partitionOffset, compressedBuffer, 0, rawSize);
         var decrypted = DecryptCompressionBlock(compressedBuffer, rawSize, blockIndex, Game == GAME_LordOfMysteries || Game == GAME_FragPunk && Path.Contains("global", StringComparison.Ordinal));
-
-        if (compressionBlock.CompressionMethodIndex == 0)
+        var uncompressedSize = (int) compressionBlock.UncompressedSize;
+        var result = IoStoreBlock.Rent(uncompressedSize);
+        try
         {
-            var result = new byte[compressionBlock.UncompressedSize];
-            Buffer.BlockCopy(decrypted, 0, result, 0, (int) compressionBlock.UncompressedSize);
+            if (compressionBlock.CompressionMethodIndex == 0)
+            {
+                decrypted.AsSpan(0, uncompressedSize).CopyTo(result.Memory.Span);
+            }
+            else
+            {
+                var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                Compression.Compression.Decompress(decrypted, 0, (int) compressionBlock.CompressedSize, result.Buffer, 0,
+                    uncompressedSize, compressionMethod, reader);
+            }
             return result;
         }
-
-        var uncompressedSize = (int) compressionBlock.UncompressedSize;
-        var uncompressedBuffer = new byte[uncompressedSize];
-        var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
-        Compression.Compression.Decompress(decrypted, 0, (int) compressionBlock.CompressedSize, uncompressedBuffer, 0,
-            uncompressedSize, compressionMethod, reader);
-        return uncompressedBuffer;
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
     }
 
-    /// <summary>Async twin of <see cref="DecompressBlock"/>.</summary>
-    /// <remarks>
-    /// Does not use the <see cref="_tlsCompressedBuffer"/> thread-static cache from the sync
-    /// path — async continuations can resume on a different thread than the one that allocated
-    /// it, which defeats reuse and can also race-stomp another thread's live buffer. Allocates
-    /// per call; a future buffer-pooling pass (see follow-up spec) can introduce ArrayPool here.
-    /// </remarks>
-    internal async Task<byte[]> DecompressBlockAsync(int blockIndex, CancellationToken cancellationToken)
+    internal async Task<IoStoreBlock> DecompressBlockAsync(int blockIndex, CancellationToken cancellationToken)
     {
         var compressionBlock = TocResource.CompressionBlocks[blockIndex];
-
         var rawSize = (int) compressionBlock.CompressedSize.Align(Aes.ALIGN);
-        var compressedBuffer = new byte[rawSize];
+        var compressedBuffer = ArrayPool<byte>.Shared.Rent(rawSize);
 
         var partitionIndex = (int) ((ulong) compressionBlock.Offset / TocResource.Header.PartitionSize);
         var partitionOffset = (long) ((ulong) compressionBlock.Offset % TocResource.Header.PartitionSize);
@@ -465,23 +464,31 @@ public partial class IoStoreReader : AbstractAesVfsReader
         {
             await reader.ReadAtAsync(partitionOffset, compressedBuffer.AsMemory(0, rawSize), cancellationToken).ConfigureAwait(false);
             var decrypted = DecryptCompressionBlock(compressedBuffer, rawSize, blockIndex, Game == GAME_LordOfMysteries || Game == GAME_FragPunk && Path.Contains("global", StringComparison.Ordinal));
-
-            if (compressionBlock.CompressionMethodIndex == 0)
+            var uncompressedSize = (int) compressionBlock.UncompressedSize;
+            var result = IoStoreBlock.Rent(uncompressedSize);
+            try
             {
-                var result = new byte[compressionBlock.UncompressedSize];
-                Buffer.BlockCopy(decrypted, 0, result, 0, (int) compressionBlock.UncompressedSize);
+                if (compressionBlock.CompressionMethodIndex == 0)
+                {
+                    decrypted.AsSpan(0, uncompressedSize).CopyTo(result.Memory.Span);
+                }
+                else
+                {
+                    var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                    Compression.Compression.Decompress(decrypted, 0, (int) compressionBlock.CompressedSize, result.Buffer, 0,
+                        uncompressedSize, compressionMethod, reader);
+                }
                 return result;
             }
-
-            var uncompressedSize = (int) compressionBlock.UncompressedSize;
-            var uncompressedBuffer = new byte[uncompressedSize];
-            var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
-            Compression.Compression.Decompress(decrypted, 0, (int) compressionBlock.CompressedSize, uncompressedBuffer, 0,
-                uncompressedSize, compressionMethod, reader);
-            return uncompressedBuffer;
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
         }
         finally
         {
+            ArrayPool<byte>.Shared.Return(compressedBuffer);
             if (ownsReader) reader.Dispose();
         }
     }

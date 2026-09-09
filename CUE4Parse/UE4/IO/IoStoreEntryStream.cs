@@ -12,7 +12,7 @@ public sealed class IoStoreEntryStream : Stream, ICloneable
     private readonly long _entrySize;
     private readonly long _compressionBlockSize;
 
-    private byte[]? _cachedBlock;
+    private IoStoreBlock? _cachedBlock;
     private int _cachedBlockIndex = -1;
     private long _position;
 
@@ -41,6 +41,7 @@ public sealed class IoStoreEntryStream : Stream, ICloneable
 
     public void ReleaseCache()
     {
+        _cachedBlock?.Dispose();
         _cachedBlock = null;
         _cachedBlockIndex = -1;
     }
@@ -72,6 +73,7 @@ public sealed class IoStoreEntryStream : Stream, ICloneable
 
             if (_cachedBlockIndex != blockIndex)
             {
+                _cachedBlock?.Dispose();
                 _cachedBlock = _reader.DecompressBlock(blockIndex);
                 _cachedBlockIndex = blockIndex;
             }
@@ -79,7 +81,7 @@ public sealed class IoStoreEntryStream : Stream, ICloneable
             var availableInBlock = _cachedBlock!.Length - offsetInBlock;
             var toCopy = Math.Min(toRead, availableInBlock);
 
-            Buffer.BlockCopy(_cachedBlock, offsetInBlock, buffer, offset, toCopy);
+            _cachedBlock.Memory.Span.Slice(offsetInBlock, toCopy).CopyTo(buffer.AsSpan(offset, toCopy));
             offset += toCopy;
             _position += toCopy;
             toRead -= toCopy;
@@ -102,6 +104,12 @@ public sealed class IoStoreEntryStream : Stream, ICloneable
     }
 
     public override void Flush() { }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            ReleaseCache();
+        base.Dispose(disposing);
+    }
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
