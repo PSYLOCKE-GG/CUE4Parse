@@ -50,21 +50,25 @@ namespace CUE4Parse.UE4.Readers
         };
 
         // ReadAt must leave the cursor where it found it: callers such as FByteBulkData read a
-        // payload out of the archive an export is still walking. The random-access overrides
-        // never touch the cursor, so the seeking fallbacks restore it.
+        // payload out of the archive an export is still walking. Cursor-backed archives also
+        // share this fallback across concurrent bulk reads, so the seek/read/restore sequence
+        // must be atomic. True random-access overrides never touch the cursor.
         public override int ReadAt(long position, byte[] buffer, int offset, int count)
         {
-            var previous = Position;
-            Position = position;
-            CheckReadSize(count);
+            lock (this)
+            {
+                var previous = Position;
+                Position = position;
+                CheckReadSize(count);
 
-            try
-            {
-                return Read(buffer, offset, count);
-            }
-            finally
-            {
-                Position = previous;
+                try
+                {
+                    return Read(buffer, offset, count);
+                }
+                finally
+                {
+                    Position = previous;
+                }
             }
         }
 
