@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Assets;
 
@@ -12,9 +11,11 @@ namespace CUE4Parse.FileProvider;
 /// </summary>
 /// <remarks>
 /// Disabled by default. When enabled, residency is bounded by <see cref="MaxSize"/> with LRU
-/// eviction, loads are single-flight per file (two threads racing on the same package produce
-/// one load), and <see cref="HitCount"/>/<see cref="MissCount"/>/<see cref="EvictionCount"/>
-/// make residency distinguishable from thrash. Failed loads are never cached.
+/// eviction. Concurrent misses may load the same package independently, then converge on the
+/// first resident instance. Package construction can synchronously resolve other packages, so
+/// sharing incomplete loads would deadlock when concurrent dependency paths cross. Failed loads
+/// are never cached. <see cref="HitCount"/>/<see cref="MissCount"/>/<see cref="EvictionCount"/>
+/// make residency distinguishable from thrash.
 /// </remarks>
 public class PackageCache
 {
@@ -40,24 +41,22 @@ public class PackageCache
     private readonly Lock _lock = new();
     private readonly Dictionary<Key, LinkedListNode<(Key Key, IPackage Package)>> _residents = [];
     private readonly LinkedList<(Key Key, IPackage Package)> _lru = [];
-    private readonly ConcurrentDictionary<Key, Lazy<Task<IPackage>>> _inFlight = [];
-
     public IPackage GetOrLoad(GameFile file, EPackageReadFlags readFlags, Func<GameFile, IPackage> loader)
     {
         var key = new Key(file, readFlags);
         if (TryGetResident(key, out var resident)) return resident;
-        var lazy = _inFlight.GetOrAdd(key, _ => new Lazy<Task<IPackage>>(
-            () => Task.FromResult(LoadAndRegister(key, loader)), LazyThreadSafetyMode.ExecutionAndPublication));
-        return lazy.Value.GetAwaiter().GetResult();
+        Interlocked.Increment(ref _misses);
+        return RegisterOrGet(key, loader(file));
     }
 
-    public Task<IPackage> GetOrLoadAsync(GameFile file, EPackageReadFlags readFlags, Func<GameFile, Task<IPackage>> loader)
+    public async Task<IPackage> GetOrLoadAsync(
+        GameFile file, EPackageReadFlags readFlags, Func<GameFile, Task<IPackage>> loader)
     {
         var key = new Key(file, readFlags);
-        if (TryGetResident(key, out var resident)) return Task.FromResult(resident);
-        var lazy = _inFlight.GetOrAdd(key, _ => new Lazy<Task<IPackage>>(
-            () => LoadAndRegisterAsync(key, loader), LazyThreadSafetyMode.ExecutionAndPublication));
-        return lazy.Value;
+        if (TryGetResident(key, out var resident)) return resident;
+        Interlocked.Increment(ref _misses);
+        var loaded = await loader(file).ConfigureAwait(false);
+        return RegisterOrGet(key, loaded);
     }
 
     public void Clear()
@@ -81,38 +80,6 @@ public class PackageCache
         }
     }
 
-    private IPackage LoadAndRegister(Key key, Func<GameFile, IPackage> loader)
-    {
-        try
-        {
-            Interlocked.Increment(ref _misses);
-            var package = loader(key.File);
-            Register(key, package);
-            return package;
-        }
-        finally
-        {
-            // Removed only after Register, so late callers find the package resident
-            // rather than starting a second load.
-            _inFlight.TryRemove(key, out _);
-        }
-    }
-
-    private async Task<IPackage> LoadAndRegisterAsync(Key key, Func<GameFile, Task<IPackage>> loader)
-    {
-        try
-        {
-            Interlocked.Increment(ref _misses);
-            var package = await loader(key.File).ConfigureAwait(false);
-            Register(key, package);
-            return package;
-        }
-        finally
-        {
-            _inFlight.TryRemove(key, out _);
-        }
-    }
-
     private bool TryGetResident(Key key, out IPackage package)
     {
         lock (_lock)
@@ -131,11 +98,17 @@ public class PackageCache
         return false;
     }
 
-    private void Register(Key key, IPackage package)
+    private IPackage RegisterOrGet(Key key, IPackage package)
     {
         lock (_lock)
         {
-            if (_residents.ContainsKey(key)) return;
+            if (_residents.TryGetValue(key, out var resident))
+            {
+                _lru.Remove(resident);
+                _lru.AddFirst(resident);
+                return resident.Value.Package;
+            }
+
             _residents[key] = _lru.AddFirst((key, package));
             while (_residents.Count > MaxSize)
             {
@@ -144,6 +117,8 @@ public class PackageCache
                 _residents.Remove(last.Value.Key);
                 Interlocked.Increment(ref _evictions);
             }
+
+            return package;
         }
     }
 }
