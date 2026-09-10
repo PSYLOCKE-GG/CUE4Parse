@@ -64,12 +64,13 @@ public class PackageCacheTests
     }
 
     [Fact]
-    public void ConcurrentLoadsOfSamePathAreSingleFlight()
+    public void ConcurrentLoadsOfSamePathConvergeOnResidentInstance()
     {
         var cache = new PackageCache { Enabled = true };
         var file = new FakeGameFile("Game/A.uasset");
         var loads = 0;
         using var gate = new ManualResetEventSlim();
+        using var loadersStarted = new CountdownEvent(16);
 
         var results = new IPackage[16];
         var threads = Enumerable.Range(0, 16).Select(i => new Thread(() =>
@@ -78,7 +79,8 @@ public class PackageCacheTests
             results[i] = cache.GetOrLoad(file, EPackageReadFlags.None, _ =>
             {
                 Interlocked.Increment(ref loads);
-                Thread.Sleep(50);
+                loadersStarted.Signal();
+                Assert.True(loadersStarted.Wait(TimeSpan.FromSeconds(5)));
                 return new FakePackage();
             });
         })).ToArray();
@@ -86,8 +88,70 @@ public class PackageCacheTests
         gate.Set();
         foreach (var t in threads) t.Join();
 
-        Assert.Equal(1, loads);
+        Assert.Equal(16, loads);
         Assert.All(results, r => Assert.Same(results[0], r));
+    }
+
+    [Fact]
+    public async Task ConcurrentCrossDependentLoadsDoNotDeadlock()
+    {
+        var cache = new PackageCache { Enabled = true };
+        var a = new FakeGameFile("Game/A.uasset");
+        var b = new FakeGameFile("Game/B.uasset");
+        using var bothStarted = new CountdownEvent(2);
+
+        IPackage LoadDependency(GameFile file)
+            => cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
+
+        var loadA = Task.Run(() => cache.GetOrLoad(a, EPackageReadFlags.None, _ =>
+        {
+            bothStarted.Signal();
+            Assert.True(bothStarted.Wait(TimeSpan.FromSeconds(5)));
+            LoadDependency(b);
+            return new FakePackage();
+        }));
+        var loadB = Task.Run(() => cache.GetOrLoad(b, EPackageReadFlags.None, _ =>
+        {
+            bothStarted.Signal();
+            Assert.True(bothStarted.Wait(TimeSpan.FromSeconds(5)));
+            LoadDependency(a);
+            return new FakePackage();
+        }));
+
+        var all = Task.WhenAll(loadA, loadB);
+        var completed = await Task.WhenAny(
+            all,
+            Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+
+        Assert.Same(all, completed);
+        await all;
+    }
+
+    [Fact]
+    public async Task SynchronousDependencyDoesNotWaitOnCrossedAsyncLoad()
+    {
+        var cache = new PackageCache { Enabled = true };
+        var a = new FakeGameFile("Game/A.uasset");
+        var b = new FakeGameFile("Game/B.uasset");
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = 0;
+
+        Task<IPackage> Load(GameFile file, GameFile dependency) =>
+            cache.GetOrLoadAsync(file, EPackageReadFlags.None, async _ =>
+            {
+                if (Interlocked.Increment(ref started) == 2) release.SetResult();
+                await release.Task;
+                cache.GetOrLoad(dependency, EPackageReadFlags.None, _ => new FakePackage());
+                return new FakePackage();
+            });
+
+        var all = Task.WhenAll(Load(a, b), Load(b, a));
+        var completed = await Task.WhenAny(
+            all,
+            Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+
+        Assert.Same(all, completed);
+        await all;
     }
 
     [Fact]
