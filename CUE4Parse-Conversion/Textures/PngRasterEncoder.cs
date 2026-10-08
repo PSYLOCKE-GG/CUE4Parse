@@ -10,13 +10,13 @@ using Sdcb.FFmpeg.Utils;
 
 namespace CUE4Parse_Conversion.Textures;
 
-public static class PngRasterEncoder
+internal static class PngRasterEncoder
 {
     public static unsafe byte[] EncodeHeightmap(HeightmapRaster raster, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(raster);
         cancellationToken.ThrowIfCancellationRequested();
-        using var encoder = CreateEncoder("png", raster.Width, raster.Height, AVPixelFormat.Gray16be);
+        using var encoder = CreateEncoder(raster.Width, raster.Height);
         using var frame = Frame.CreateVideo(raster.Width, raster.Height, AVPixelFormat.Gray16be);
         for (var y = 0; y < raster.Height; y++)
         {
@@ -43,15 +43,15 @@ public static class PngRasterEncoder
         return output.ToArray();
     }
 
-    internal static CodecContext CreateEncoder(string codecName, int width, int height, AVPixelFormat format)
+    private static CodecContext CreateEncoder(int width, int height)
     {
-        var codec = Codec.FindEncoderByName(codecName)
-            ?? throw new InvalidOperationException($"The loaded libavcodec has no {codecName} encoder.");
+        var codec = Codec.FindEncoderByName("png")
+            ?? throw new InvalidOperationException("The loaded libavcodec has no PNG encoder.");
         var encoder = new CodecContext(codec)
         {
             Width = width,
             Height = height,
-            PixelFormat = format,
+            PixelFormat = AVPixelFormat.Gray16be,
             TimeBase = new AVRational { Num = 1, Den = 1000 },
             ThreadCount = 1,
             CompressionLevel = 6,
