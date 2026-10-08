@@ -7,15 +7,13 @@ using CUE4Parse_Conversion.Writers;
 using CUE4Parse.UE4.Assets.Exports.Component.Landscape;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Meshes;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using SkiaSharp;
 
 namespace CUE4Parse_Conversion.Dto;
 
 public partial class MeshLodDto<TVertex>
 {
-    internal static MeshLodDto<MeshVertex> FromLandscapeMesh(StaticMeshDto owner, ULandscapeComponent[] components, int sizeQuads, ELandscapeFlags flags, out ConcurrentDictionary<string, SKBitmap>? bitmaps, out Image<L16>? heightmap)
+    internal static MeshLodDto<MeshVertex> FromLandscapeMesh(StaticMeshDto owner, ULandscapeComponent[] components, int sizeQuads, ELandscapeFlags flags, out ConcurrentDictionary<string, SKBitmap>? bitmaps, out HeightmapRaster? heightmap)
     {
         var componentSizeQuads = ((sizeQuads + 1) >> 0 /*Landscape->ExportLOD*/) - 1;
         var scale = (float)componentSizeQuads / sizeQuads;
@@ -69,7 +67,7 @@ public partial class MeshLodDto<TVertex>
             extraUvs[i] = new FMeshUVFloat[vertices.Length];
         }
 
-        var heightmapTexture = flags.HasFlag(ELandscapeFlags.Heightmap) ? new Image<L16>(width, height) : null;
+        var heightmapTexture = flags.HasFlag(ELandscapeFlags.Heightmap) ? new HeightmapRaster(width, height) : null;
         var bitmapTextures = flags.HasFlag(ELandscapeFlags.Weightmap) ? new ConcurrentDictionary<string, SKBitmap>() : null;
 
         for (var i = 0; i < components.Length; i++)
@@ -90,11 +88,11 @@ public partial class MeshLodDto<TVertex>
                 var textureUv = new FMeshUVFloat(vertX * scale + cdi.Component.SectionBaseX, vertY * scale + cdi.Component.SectionBaseY);
                 var textureUv2 = new TIntVector2<int>((int)textureUv.U - minX, (int)textureUv.V - minY);
 
-                heightmapTexture?.ProcessPixelRows(accessor =>
+                if (heightmapTexture != null)
                 {
-                    var pixelRow = accessor.GetRowSpan(textureUv2.Y);
-                    pixelRow[textureUv2.X] = new L16((ushort)(cdi.GetVertex(vertX, vertY) + relLoc).Z);
-                });
+                    var pixelRow = heightmapTexture.GetRowSpan(textureUv2.Y);
+                    pixelRow[textureUv2.X] = (ushort)(cdi.GetVertex(vertX, vertY) + relLoc).Z;
+                }
 
                 foreach (var allocationInfo in weightMapAllocs)
                 {

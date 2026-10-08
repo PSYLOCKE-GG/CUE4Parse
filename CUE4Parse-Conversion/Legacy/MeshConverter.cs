@@ -8,7 +8,6 @@ using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse_Conversion.Dto;
 using CUE4Parse_Conversion.Options;
-using SixLabors.ImageSharp;
 using SkiaSharp;
 using Log = Serilog.Log;
 
@@ -81,7 +80,7 @@ public static class MeshConverter
     }
 
     [Obsolete("This method is deprecated. Please use LandscapeMeshDto constructor directly and handle exceptions as needed.")]
-    public static bool TryConvert(this ALandscapeProxy landscape, ULandscapeComponent[]? landscapeComponents, ELandscapeFlags flags, [MaybeNullWhen(false)] out LandscapeMeshDto convertedMesh, out Dictionary<string,Image> heightMaps, out Dictionary<string, SKBitmap> weightMaps)
+    public static bool TryConvert(this ALandscapeProxy landscape, ULandscapeComponent[]? landscapeComponents, ELandscapeFlags flags, [MaybeNullWhen(false)] out LandscapeMeshDto convertedMesh, out Dictionary<string, HeightmapRaster> heightMaps, out Dictionary<string, SKBitmap> weightMaps)
     {
         heightMaps = [];
         weightMaps = [];

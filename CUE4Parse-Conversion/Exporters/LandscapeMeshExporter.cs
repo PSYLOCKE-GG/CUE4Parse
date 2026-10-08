@@ -8,19 +8,13 @@ using CUE4Parse_Conversion.Options;
 using CUE4Parse_Conversion.Writers;
 using CUE4Parse.UE4.Assets.Exports.Actor;
 using CUE4Parse.UE4.Assets.Exports.Component.Landscape;
-using SixLabors.ImageSharp.Formats.Png;
+using CUE4Parse_Conversion.Textures;
 using SkiaSharp;
 
 namespace CUE4Parse_Conversion.Exporters;
 
 public sealed class LandscapeMeshExporter(ALandscapeProxy actor) : MeshExporter<ALandscapeProxy>(actor)
 {
-    private static readonly PngEncoder _heightmapEncoder = new()
-    {
-        ColorType = PngColorType.Grayscale,
-        BitDepth = PngBitDepth.Bit16,
-    };
-
     protected override IReadOnlyList<ExportFile> BuildFiles(ALandscapeProxy actor, IMeshExportFormat format)
     {
         const ELandscapeFlags flags = ELandscapeFlags.All; // TODO: options
@@ -34,10 +28,7 @@ public sealed class LandscapeMeshExporter(ALandscapeProxy actor) : MeshExporter<
         var additional = new List<ExportFile>();
         if (dto.HeightmapTexture is { } heightmap)
         {
-            using var stream = new MemoryStream();
-            heightmap.Save(stream, _heightmapEncoder);
-            additional.Add(new ExportFile("png", stream.ToArray(), "/heightmap"));
-            heightmap.Dispose();
+            additional.Add(new ExportFile("png", PngRasterEncoder.EncodeHeightmap(heightmap), "/heightmap"));
         }
 
         if (dto.BitmapTextures is { } bitmaps)

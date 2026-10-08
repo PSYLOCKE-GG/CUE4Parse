@@ -23,7 +23,8 @@
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="SharpGLTF.Core" Version="1.0.6" />
     <PackageVersion Include="SharpGLTF.Toolkit" Version="1.0.6" />
-    <PackageVersion Include="SixLabors.ImageSharp" Version="[4.1.2]" />
+    <PackageVersion Include="Sdcb.FFmpeg" Version="6.1.0.2" />
+    <PackageVersion Include="Sdcb.FFmpeg.runtime.windows-x64" Version="6.1.1" />
     <PackageVersion Include="SkiaSharp" Version="3.119.2" />
     <PackageVersion Include="SubstreamSharp" Version="1.0.3" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.8" />

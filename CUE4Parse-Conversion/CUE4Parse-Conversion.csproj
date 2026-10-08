@@ -10,7 +10,8 @@
     <PackageReference Include="AssetRipper.TextureDecoder" />
     <PackageReference Include="SharpGLTF.Core" />
     <PackageReference Include="SharpGLTF.Toolkit" />
-    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="Sdcb.FFmpeg" />
+    <PackageReference Include="Sdcb.FFmpeg.runtime.windows-x64" />
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
   </ItemGroup>

@@ -14,8 +14,6 @@ using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion.Options;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using SkiaSharp;
 
 namespace CUE4Parse_Conversion.Dto;
@@ -437,7 +435,7 @@ public sealed class SkeletalMeshDto : SkeletonDto
 public sealed class LandscapeMeshDto : StaticMeshDto
 {
     public readonly ConcurrentDictionary<string, SKBitmap>? BitmapTextures;
-    public readonly Image<L16>? HeightmapTexture;
+    public readonly HeightmapRaster? HeightmapTexture;
 
     public LandscapeMeshDto(ALandscapeProxy landscape, ELandscapeFlags flags = ELandscapeFlags.Mesh, ULandscapeComponent[]? components = null)
         : this(landscape, flags, PrepareComponents(landscape, components))
