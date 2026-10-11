@@ -17,6 +17,12 @@ public class UTexture2D : UTexture
     public bool bForcePVRTC4 { get; private set; }
     public FName TextureFileCacheName { get; private set; }
 
+    /// <summary>
+    /// The class's constructor value of <see cref="AddressX"/> and <see cref="AddressY"/>, which a cooked asset omits
+    /// when it keeps it (Texture2D.cpp: UTexture2D::UTexture2D leaves TA_Wrap).
+    /// </summary>
+    protected virtual TextureAddress DefaultAddress => TextureAddress.TA_Wrap;
+
     public override TextureAddress GetTextureAddressX() => AddressX;
     public override TextureAddress GetTextureAddressY() => AddressY;
 
@@ -25,8 +31,8 @@ public class UTexture2D : UTexture
         if (Ar.Game == GAME_WorldofJadeDynasty) Ar.Position += 12;
         base.Deserialize(Ar, validPos);
         ImportedSize = GetOrDefault<FIntPoint>(nameof(ImportedSize));
-        AddressX = GetOrDefault<TextureAddress>(nameof(AddressX));
-        AddressY = GetOrDefault<TextureAddress>(nameof(AddressY));
+        AddressX = GetOrDefault(nameof(AddressX), DefaultAddress);
+        AddressY = GetOrDefault(nameof(AddressY), DefaultAddress);
         bForcePVRTC4 = GetOrDefault<bool>(nameof(bForcePVRTC4));
         TextureFileCacheName = GetOrDefault<FName>(nameof(TextureFileCacheName));
 
