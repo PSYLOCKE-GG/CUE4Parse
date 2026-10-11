@@ -62,6 +62,15 @@ public class UTexture : UUnrealMaterial, IAssetUserData
         }
     }
 
+    /// <summary>
+    /// The class's constructor value of <see cref="Filter"/>, which a cooked asset omits when it keeps it
+    /// (Texture.cpp: UTexture::UTexture sets TF_Default).
+    /// </summary>
+    protected virtual TextureFilter DefaultFilter => TextureFilter.TF_Default;
+
+    /// <summary>The class's constructor value of <see cref="SRGB"/> (Texture.cpp: UTexture::UTexture sets true).</summary>
+    protected virtual bool DefaultSRGB => true;
+
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
         if (Ar.Game is GAME_WorldofJadeDynasty or GAME_RocoKingdomWorld) Ar.Position += 16;
@@ -69,8 +78,8 @@ public class UTexture : UUnrealMaterial, IAssetUserData
         LightingGuid = GetOrDefault(nameof(LightingGuid), new FGuid((uint) GetFullName().GetHashCode()));
         CompressionSettings = GetOrDefault(nameof(CompressionSettings), TextureCompressionSettings.TC_Default);
         LODGroup = GetOrDefault(nameof(LODGroup), TextureGroup.TEXTUREGROUP_World);
-        Filter = GetOrDefault(nameof(Filter), TextureFilter.TF_Nearest);
-        SRGB = GetOrDefault(nameof(SRGB), true);
+        Filter = GetOrDefault(nameof(Filter), DefaultFilter);
+        SRGB = GetOrDefault(nameof(SRGB), DefaultSRGB);
         AssetUserData = GetOrDefault<FPackageIndex[]>(nameof(AssetUserData), []);
         CookPlatformTilingSettings = GetOrDefault<ETextureCookPlatformTilingSettings>(nameof(CookPlatformTilingSettings));
 
