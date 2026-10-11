@@ -12,8 +12,16 @@ namespace CUE4Parse_Conversion.Writers.Gltf;
 /// source LOD's UV count into the constructor so downstream meshes declare exactly the
 /// TEXCOORD_N attributes they actually populate.
 /// </summary>
-public struct VertexColorXTextureX : IVertexMaterial, IEquatable<VertexColorXTextureX>
+/// <remarks>
+/// SharpGLTF reads the values of TEXCOORD_0..3 through <see cref="GetTexCoord"/>, but it reads
+/// every other attribute through <see cref="IVertexCustom"/> and writes zeros when the vertex
+/// does not supply it. So this type serves TEXCOORD_4 and up as custom attributes.
+/// </remarks>
+public struct VertexColorXTextureX : IVertexCustom, IEquatable<VertexColorXTextureX>
 {
+    private const string TexCoordPrefix = "TEXCOORD_";
+    private const int FirstCustomTexCoord = 4;
+
     public int MaxColors => 1; // Do we need more?
     public int MaxTextCoords => _numTexCoords;
 
@@ -88,6 +96,38 @@ public struct VertexColorXTextureX : IVertexMaterial, IEquatable<VertexColorXTex
         TexCoord1 += delta.GetTexCoord(1);
         TexCoord2 += delta.GetTexCoord(2);
         TexCoord3 += delta.GetTexCoord(3);
+    }
+
+    public IEnumerable<string> CustomAttributes =>
+        Enumerable.Range(FirstCustomTexCoord, Math.Max(0, _numTexCoords - FirstCustomTexCoord)).Select(i => TexCoordPrefix + i);
+
+    public bool TryGetCustomAttribute(string attributeName, out object value)
+    {
+        if (TryParseCustomTexCoord(attributeName, out var index) && index < _numTexCoords)
+        {
+            value = GetTexCoord(index);
+            return true;
+        }
+
+        value = null!;
+        return false;
+    }
+
+    public void SetCustomAttribute(string attributeName, object value)
+    {
+        if (TryParseCustomTexCoord(attributeName, out var index) && value is Vector2 coord)
+            ((IVertexMaterial) this).SetTexCoord(index, coord);
+    }
+
+    // The cooked UVs pass through unchanged. A cooked channel can hold NaN, and the export keeps it.
+    public void Validate() { }
+
+    private static bool TryParseCustomTexCoord(string attributeName, out int index)
+    {
+        index = -1;
+        return attributeName.StartsWith(TexCoordPrefix, StringComparison.Ordinal)
+            && int.TryParse(attributeName.AsSpan(TexCoordPrefix.Length), out index)
+            && index >= FirstCustomTexCoord && index < Constants.MAX_MESH_UV_SETS;
     }
 
     public VertexMaterialDelta Subtract(IVertexMaterial baseValue)
