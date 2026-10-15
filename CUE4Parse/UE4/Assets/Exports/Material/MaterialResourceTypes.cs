@@ -574,6 +574,11 @@ public class FMaterialShaderMapContent : FShaderMapContent
 {
     public FMeshMaterialShaderMap[] OrderedMeshShaderMaps;
     public FMaterialCompilationOutput MaterialCompilationOutput;
+    /// <summary>
+    /// Marvel Rivals: the uniform expression set of a second per-material uniform buffer that the game fills at run
+    /// time. Its layout initializer names the buffer, and its preshader fields place each parameter in a register.
+    /// </summary>
+    public FUniformExpressionSet? RuntimeUniformExpressionSet;
     public FSHAHash ShaderContentHash;
     public FName UserSceneTextureOutput;
     public int UserTextureDivisorX = 0;
@@ -593,6 +598,7 @@ public class FMaterialShaderMapContent : FShaderMapContent
         });
 
         MaterialCompilationOutput = new FMaterialCompilationOutput(Ar);
+        if (Ar.Game is GAME_MarvelRivals) RuntimeUniformExpressionSet = new FUniformExpressionSet(Ar);
         ShaderContentHash = new FSHAHash(Ar, Ar.Game >= GAME_UE5_8 ? 8 : FSHAHash.SIZE);
 
         if (Ar.Game >= GAME_UE5_5)
