@@ -17,6 +17,8 @@ public class FGeometryCollectionRenderData
     public FNaniteResources? NaniteResources;
     public FBoxSphereBounds? PreSkinnedBounds;
     [JsonIgnore] public object? CustomData;
+    /// <summary>Marvel Rivals: every cooked render entry in serialized order with the flags that precede it, empty slots included.</summary>
+    [JsonIgnore] public List<FGeometryCollectionCookedEntry>? CookedEntries;
 
     public FGeometryCollectionRenderData(FAssetArchive Ar, bool bStripRenderDataOnCook, bool nanite = false)
     {
@@ -28,12 +30,17 @@ public class FGeometryCollectionRenderData
         if (Ar.Game is GAME_MarvelRivals)
         {
             var customData = new List<(FGeometryCollectionMeshResources?, FGeometryCollectionMeshDescription?)>();
+            CookedEntries = [];
             while (Ar.Position < Ar.Length -4)
             {
                 FGeometryCollectionMeshResources? mesh = null!;
                 FGeometryCollectionMeshDescription? meshdesc = null!;
                 var flags = Ar.Read<int>();
-                if (flags == 0) continue;
+                if (flags == 0)
+                {
+                    CookedEntries.Add(new FGeometryCollectionCookedEntry(flags, null, null));
+                    continue;
+                }
                 var idk0 = Ar.ReadArray(Ar.ReadBoolean);
                 var inlined = Ar.ReadBoolean();
                 if (nanite)
@@ -46,6 +53,7 @@ public class FGeometryCollectionRenderData
                 if (idk0.Length == 0 && !inlined && size is < 5)
                 {
                     Ar.Position -= 4;
+                    CookedEntries.Add(new FGeometryCollectionCookedEntry(flags, null, null));
                     continue;
                 }
 
@@ -62,6 +70,7 @@ public class FGeometryCollectionRenderData
 
                 meshdesc = new FGeometryCollectionMeshDescription(Ar);
                 customData.Add((mesh, meshdesc));
+                CookedEntries.Add(new FGeometryCollectionCookedEntry(flags, mesh, meshdesc));
             }
 
             CustomData = customData;
@@ -89,3 +98,9 @@ public class FGeometryCollectionRenderData
         }
     }
 }
+
+/// <summary>One Marvel Rivals cooked render entry: its leading flags and, unless the slot is empty, its mesh.</summary>
+public readonly record struct FGeometryCollectionCookedEntry(
+    int Flags,
+    FGeometryCollectionMeshResources? Mesh,
+    FGeometryCollectionMeshDescription? Description);
