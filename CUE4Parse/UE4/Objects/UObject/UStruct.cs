@@ -15,6 +15,11 @@ public class UStruct : UField
     public FField[] ChildProperties;
     public KismetExpression[] ScriptBytecode;
 
+    private FScriptBytecode? _script;
+
+    /// <summary>The number of serialized script bytes available without decoding expressions.</summary>
+    public int SerializedScriptSize => _script?.Length ?? 0;
+
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
         base.Deserialize(Ar, validPos);
@@ -59,6 +64,10 @@ public class UStruct : UField
         var bytecodeBufferSize = Ar.Read<int>();
         var serializedScriptSize = Ar.Ver >= EUnrealEngineObjectUE3Version.USTRUCT_SERIALIZE_ONDISK_SCRIPTSIZE ? Ar.Read<int>() : bytecodeBufferSize;
 
+        _script = Ar.Game >= GAME_UE4_0 && serializedScriptSize > 0
+            ? new FScriptBytecode(Ar, serializedScriptSize)
+            : null;
+
         if (Ar.Owner!.Provider?.ReadScriptData == true && Ar.Game >= GAME_UE4_0 && serializedScriptSize > 0)
         {
             using var kismetAr = new FKismetArchive(Name, Ar.ReadBytes(serializedScriptSize), Ar.Owner, Ar.Versions, Ar.NameMap, Ar.RealmIndex);
@@ -84,6 +93,12 @@ public class UStruct : UField
             Ar.Position += serializedScriptSize;
         }
     }
+
+    /// <summary>
+    /// Decodes this struct's script on each enumeration without populating ScriptBytecode.
+    /// The package source must remain open. Parse failures propagate to the caller.
+    /// </summary>
+    public IEnumerable<KismetExpression> ReadScript() => _script?.ReadExpressions(Name) ?? [];
 
     private void DeserializeProperties(FAssetArchive Ar)
     {
