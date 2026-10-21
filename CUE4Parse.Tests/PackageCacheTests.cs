@@ -17,7 +17,7 @@ namespace CUE4Parse.Tests;
 
 public class PackageCacheTests
 {
-    private sealed class FakeGameFile(string path) : GameFile(path, 0)
+    private sealed class FakeGameFile(string path, long size = 0) : GameFile(path, size)
     {
         public override bool IsEncrypted => false;
         public override CompressionMethod CompressionMethod => CompressionMethod.None;
@@ -164,12 +164,13 @@ public class PackageCacheTests
     }
 
     [Fact]
-    public void EvictsLeastRecentlyUsedBeyondMaxSize()
+    public void EvictsLeastRecentlyUsedBeyondMaxBytes()
     {
-        var cache = new PackageCache { Enabled = true, MaxSize = 2 };
-        var a = new FakeGameFile("Game/A.uasset");
-        var b = new FakeGameFile("Game/B.uasset");
-        var c = new FakeGameFile("Game/C.uasset");
+        const long PackageBytes = 100;
+        var cache = new PackageCache { Enabled = true, MaxBytes = 2 * PackageBytes };
+        var a = new FakeGameFile("Game/A.uasset", PackageBytes);
+        var b = new FakeGameFile("Game/B.uasset", PackageBytes);
+        var c = new FakeGameFile("Game/C.uasset", PackageBytes);
 
         var pa = cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage());
         cache.GetOrLoad(b, EPackageReadFlags.None, _ => new FakePackage());
@@ -177,6 +178,7 @@ public class PackageCacheTests
         cache.GetOrLoad(c, EPackageReadFlags.None, _ => new FakePackage()); // evicts B
 
         Assert.Equal(1, cache.EvictionCount);
+        Assert.Equal(2 * PackageBytes, cache.ResidentBytes);
         Assert.Same(pa, cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage()));
         var reloads = 0;
         cache.GetOrLoad(b, EPackageReadFlags.None, _ => { reloads++; return new FakePackage(); });

@@ -10,8 +10,8 @@ namespace CUE4Parse.FileProvider;
 /// shared by thousands of packages (compression settings, skeletons, ...) are re-read forever.
 /// </summary>
 /// <remarks>
-/// Disabled by default. When enabled, residency is bounded by <see cref="MaxSize"/> with LRU
-/// eviction. Concurrent misses may load the same package independently, then converge on the
+/// Disabled by default. When enabled, residency is bounded by <see cref="MaxBytes"/> with LRU
+/// eviction. A package weighs its stored file size: the serialized bytes it keeps resident. Concurrent misses may load the same package independently, then converge on the
 /// first resident instance. Package construction can synchronously resolve other packages, so
 /// sharing incomplete loads would deadlock when concurrent dependency paths cross. Failed loads
 /// are never cached. <see cref="HitCount"/>/<see cref="MissCount"/>/<see cref="EvictionCount"/>
@@ -22,8 +22,8 @@ public class PackageCache
     /// <summary>Turns residency on. Off, every load constructs a fresh package (historical behavior).</summary>
     public bool Enabled { get; set; }
 
-    /// <summary>Residency ceiling in packages. Kept bounded because packages can pin large buffers (vertex data, bulk data).</summary>
-    public int MaxSize { get; set; } = 256;
+    /// <summary>Residency ceiling in stored bytes. A package that alone exceeds it is returned but not kept.</summary>
+    public long MaxBytes { get; set; } = 1L << 30;
 
     private long _hits, _misses, _evictions;
     public long HitCount => Interlocked.Read(ref _hits);
@@ -33,6 +33,10 @@ public class PackageCache
     {
         get { lock (_lock) return _residents.Count; }
     }
+    public long ResidentBytes
+    {
+        get { lock (_lock) return _residentBytes; }
+    }
 
     // Reference equality on GameFile keeps identical paths from different containers distinct;
     // flags participate so a metadata-only load never satisfies a full-fidelity one.
@@ -41,6 +45,7 @@ public class PackageCache
     private readonly Lock _lock = new();
     private readonly Dictionary<Key, LinkedListNode<(Key Key, IPackage Package)>> _residents = [];
     private readonly LinkedList<(Key Key, IPackage Package)> _lru = [];
+    private long _residentBytes;
     public IPackage GetOrLoad(GameFile file, EPackageReadFlags readFlags, Func<GameFile, IPackage> loader)
     {
         var key = new Key(file, readFlags);
@@ -65,6 +70,7 @@ public class PackageCache
         {
             _residents.Clear();
             _lru.Clear();
+            _residentBytes = 0;
         }
     }
 
@@ -76,6 +82,7 @@ public class PackageCache
         {
             if (!_residents.Remove(key, out var node)) return false;
             _lru.Remove(node);
+            _residentBytes -= key.File.Size;
             return true;
         }
     }
@@ -110,11 +117,13 @@ public class PackageCache
             }
 
             _residents[key] = _lru.AddFirst((key, package));
-            while (_residents.Count > MaxSize)
+            _residentBytes += key.File.Size;
+            while (_residentBytes > MaxBytes)
             {
                 var last = _lru.Last!;
                 _lru.RemoveLast();
                 _residents.Remove(last.Value.Key);
+                _residentBytes -= last.Value.Key.File.Size;
                 Interlocked.Increment(ref _evictions);
             }
 
