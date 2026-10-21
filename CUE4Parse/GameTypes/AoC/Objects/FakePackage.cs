@@ -12,6 +12,7 @@ public class FakePackage : IPackage
 {
     public string Name { get; set; }
     public IFileProvider? Provider { get; }
+    public string? ArchiveName { get; }
     public TypeMappings? Mappings { get; }
     public FPackageFileSummary Summary { get; }
     public FNameEntrySerialized[] NameMap { get; }
@@ -26,6 +27,15 @@ public class FakePackage : IPackage
     {
         Name = name;
         Mappings = mappings;
+        Provider = null;
+        ArchiveName = null;
+
+        NameMap = [];
+        ImportMapLength = 0;
+        ExportMapLength = 0;
+        ExportsLazy = [];
+        IsFullyLoaded = true;
+        CanDeserialize = true;
     }
 
     public bool HasFlags(EPackageFlags flags)

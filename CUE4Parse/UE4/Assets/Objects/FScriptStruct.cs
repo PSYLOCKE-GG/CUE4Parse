@@ -15,7 +15,7 @@ using CUE4Parse.GameTypes.NMZ.Assets;
 using CUE4Parse.GameTypes.OtherGames.Objects;
 using CUE4Parse.GameTypes.OuterWorlds2.Objects;
 using CUE4Parse.GameTypes.PUBG.Assets.Objects;
-using CUE4Parse.GameTypes.RocoKingdomWorld.Assets.Objects;
+using CUE4Parse.GameTypes.Tencent.RocoKingdomWorld.Assets.Objects;
 using CUE4Parse.GameTypes.SG2.Objects;
 using CUE4Parse.GameTypes.SMG.UE4.Assets.Objects;
 using CUE4Parse.GameTypes.SOD2.Assets.Objects;
@@ -34,6 +34,7 @@ using CUE4Parse.UE4.Assets.Objects.Properties;
 using CUE4Parse.UE4.Assets.Objects.Unversioned;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Exceptions;
+using CUE4Parse.UE4.Objects.Chaos.GeometryCollection;
 using CUE4Parse.UE4.Objects.ChaosCaching;
 using CUE4Parse.UE4.Objects.ControlRig;
 using CUE4Parse.UE4.Objects.Core.Math;
@@ -67,7 +68,6 @@ namespace CUE4Parse.UE4.Assets.Objects;
 [JsonConverter(typeof(FScriptStructConverter))]
 public class FScriptStruct
 {
-
     public readonly IUStruct StructType;
 
     public FScriptStruct(FAssetArchive Ar, string? structName, UStruct? struc, ReadType? type)
@@ -87,7 +87,7 @@ public class FScriptStruct
             "DateTime" => type == ReadType.ZERO ? new FDateTime() : Ar.Read<FDateTime>(),
             "ExpressionInput" => type == ReadType.ZERO ? new FExpressionInput() : new FExpressionInput(Ar),
             "FrameNumber" => type == ReadType.ZERO ? new FFrameNumber() : Ar.Read<FFrameNumber>(),
-            "Guid" => type == ReadType.ZERO ? new FGuid() : Ar.Read<FGuid>(),
+            "Guid" or "GUID" => type == ReadType.ZERO ? new FGuid() : Ar.Read<FGuid>(),
             "NavAgentSelector" => type == ReadType.ZERO ? new FNavAgentSelector() : Ar.Read<FNavAgentSelector>(),
             "SmartName" => type == ReadType.ZERO ? new FSmartName() : new FSmartName(Ar),
             "NameCurveKey" => type == ReadType.ZERO ? new FNameCurveKey() : new FNameCurveKey(Ar),
@@ -127,7 +127,7 @@ public class FScriptStruct
             "LevelSequenceObjectReferenceMap" => type == ReadType.ZERO ? new FLevelSequenceObjectReferenceMap() : new FLevelSequenceObjectReferenceMap(Ar),
             "LinearColor" => type == ReadType.ZERO ? new FLinearColor() : Ar.Read<FLinearColor>(),
             "NiagaraVariable" => new FNiagaraVariable(Ar),
-            "NiagaraVariableBase" or "NiagaraDataChannelVariable" => new FNiagaraVariableBase(Ar),
+            "NiagaraVariableBase" or "NiagaraDataChannelVariable" => new FNiagaraVariableBase(Ar, structName),
             "NiagaraVariableWithOffset" => new FNiagaraVariableWithOffset(Ar),
             "NiagaraDataInterfaceGPUParamInfo" => new FNiagaraDataInterfaceGPUParamInfo(Ar),
             "MaterialOverrideNanite" => type == ReadType.ZERO ? new FMaterialOverrideNanite() : new FMaterialOverrideNanite(Ar),
@@ -217,6 +217,7 @@ public class FScriptStruct
             "EdGraphPinType" => new FEdGraphPinType(Ar),
             "ControlRigOverrideContainer" => type == ReadType.ZERO ? new FControlRigOverrideContainer() : new FControlRigOverrideContainer(Ar),
             "ChaosClothSimulationLodModel" => type == ReadType.ZERO ? new FStructFallback() : new FChaosClothSimulationLodModel(Ar),
+            "ManagedArrayCollection" when FFortniteMainBranchObjectVersion.Get(Ar) >= FFortniteMainBranchObjectVersion.Type.AddManagedArrayCollectionPropertySerialization=> type == ReadType.ZERO ? new FManagedArrayCollection() : new FManagedArrayCollection(new(Ar)),
 
             // Custom struct types for simple structs in tagged TMap
             "UInt32Property" => type == ReadType.ZERO ? new FRawUIntStruct() : Ar.Read<FRawUIntStruct>(),
@@ -228,6 +229,7 @@ public class FScriptStruct
             "FortActorRecord" => new FFortActorRecord(Ar),
             "GameplayEventFunction" => new FGameplayEventFunction(Ar),
             "GameplayEventDescriptor" => new FGameplayEventDescriptor(Ar),
+            "RemoteServerId" => Ar.Read<FRawUIntStruct>(),
 
             // Train Sim World
             "DistanceQuantity" => Ar.Read<FDistanceQuantity>(),
@@ -418,6 +420,8 @@ public class FScriptStruct
 
             // Cloudheim
             "NamedGuid" => new FStructFallback(Ar, structName, FRawHeader.FullRead, ReadType.RAW),
+
+            "FP32" when Ar.Game is GAME_MarchofGiants => type == ReadType.ZERO ? new FStructFallback() : new FStructFallback(Ar, structName, new FRawHeader([(0, 2)], ERawHeaderFlags.Reverse | ERawHeaderFlags.RawProperties), ReadType.RAW),
 
             "PackedNormal" when Ar.Game is GAME_TheDivisionResurgence => new FPackedNormal(Ar),
 

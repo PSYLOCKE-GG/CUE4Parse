@@ -213,7 +213,7 @@ namespace CUE4Parse.FileProvider
                 : throw new KeyNotFoundException($"There is no game file with the path \"{path}\"");
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetGameFile(string path, [MaybeNullWhen(false)] out GameFile file) => 
+        public bool TryGetGameFile(string path, [MaybeNullWhen(false)] out GameFile file) =>
             TryGetGameFile(path, Files, out file);
 
         public int LoadLocalization(ELanguage language = ELanguage.English, CancellationToken cancellationToken = default)
@@ -654,27 +654,64 @@ namespace CUE4Parse.FileProvider
             return package;
         }
 
+        /// <summary>
+        /// Wraps the first payload of each kind into the deferred readers the package constructors
+        /// take. Payloads are resolved when bulk data is actually read, not when the package loads.
+        /// </summary>
+        private static (Func<FByteBulkDataHeader?, FArchive?>? Ubulk, Func<FByteBulkDataHeader?, FArchive?>? Uptnl) GetPayloadReaders(
+            IReadOnlyList<GameFile> ubulks, IReadOnlyList<GameFile> uptnls)
+        {
+            var ubulk = ubulks.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => ubulks[0].SafeCreateReader(header)) : null;
+            var uptnl = uptnls.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => uptnls[0].SafeCreateReader(header)) : null;
+            return (ubulk, uptnl);
+        }
+
         private IPackage LoadPackageInner(GameFile file, EPackageReadFlags readFlags)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
 
-            var lazyUbulk = ubulks.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => ubulks[0].SafeCreateReader(header)) : null;
-            var lazyUptnl = uptnls.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => uptnls[0].SafeCreateReader(header)) : null;
+            var archiveName = (file as VfsEntry)?.Vfs.Name;
+            var (lazyUbulk, lazyUptnl) = GetPayloadReaders(ubulks, uptnls);
 
             switch (file)
             {
                 case FPakEntry pakEntry:
                     var pakUasset = pakEntry.CreateStreamingReader();
-                    return Tag(new Package(pakUasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
-                case OsGameFile:
+                    return Tag(new Package(pakUasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
+                case VersionedGameFile:
                     var uasset = file.CreateReader();
-                    return Tag(new Package(uasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
+                    return Tag(new Package(uasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     var ioUasset = ioStoreEntry.CreateStreamingReader();
-                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags), file);
+                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags), file);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
+            }
+        }
+
+        /// <summary>
+        /// Resolves the cooked optional segment of an IoStore package. Unreal Engine
+        /// requests and loads it together with the package and merges both into a single package, so
+        /// we hand it over to <see cref="IoPackage"/> which does the same.
+        /// </summary>
+        private IoOptionalSegment? FindOptionalSegment(FIoStoreEntry entry)
+        {
+            if (entry.IsOptionalSegmentPackage || !entry.IsPackageData) return null;
+            if (!Files.TryGetOptionalSegmentPackage(entry.ChunkId.AsPackageId(), out var file)) return null;
+            if (file is not FIoStoreEntry optionalEntry || ReferenceEquals(optionalEntry, entry) || !optionalEntry.IsUePackage) return null;
+
+            try
+            {
+                Files.FindPayloads(optionalEntry, out _, out var ubulks, out var uptnls);
+                var (lazyUbulk, lazyUptnl) = GetPayloadReaders(ubulks, uptnls);
+
+                return new IoOptionalSegment(optionalEntry.CreateReader(), lazyUbulk, lazyUptnl, optionalEntry.IoStoreReader.ContainerHeader);
+            }
+            catch (Exception e)
+            {
+                Log.Warning(e, "Failed to load the optional segment {Path} of {Package}", optionalEntry.Path, entry.Path);
+                return null;
             }
         }
 
@@ -693,39 +730,8 @@ namespace CUE4Parse.FileProvider
         // below, which is independently virtual.
         public virtual Task<IPackage> LoadPackageAsync(GameFile file) => LoadPackageAsync(file, EPackageReadFlags.None);
 
-        public virtual Task<IPackage> LoadPackageAsync(GameFile file, EPackageReadFlags readFlags) => PackageCache.Enabled
-            ? PackageCache.GetOrLoadAsync(file, readFlags, f => LoadPackageInnerAsync(f, readFlags))
-            : LoadPackageInnerAsync(file, readFlags);
-
-        private async Task<IPackage> LoadPackageInnerAsync(GameFile file, EPackageReadFlags readFlags)
-        {
-            if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
-            Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
-
-            var lazyUbulk = ubulks.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => ubulks[0].SafeCreateReader(header)) : null;
-            var lazyUptnl = uptnls.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => uptnls[0].SafeCreateReader(header)) : null;
-
-            switch (file)
-            {
-                case FPakEntry pakEntry:
-                    FArchive pakUasset = pakEntry.Size <= PackagePreBufferThresholdBytes
-                        ? await pakEntry.CreateReaderAsync().ConfigureAwait(false)
-                        : pakEntry.CreateStreamingReader();
-                    var uexpAr = uexp != null ? await uexp.CreateReaderAsync().ConfigureAwait(false) : null;
-                    return Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
-                case OsGameFile:
-                    var uasset = await file.CreateReaderAsync().ConfigureAwait(false);
-                    var uexpArOs = uexp != null ? await uexp.CreateReaderAsync().ConfigureAwait(false) : null;
-                    return Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
-                case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
-                    FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
-                        ? await ioStoreEntry.CreateReaderAsync().ConfigureAwait(false)
-                        : ioStoreEntry.CreateStreamingReader();
-                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags), file);
-                default:
-                    throw new NotImplementedException($"type {file.GetType()} is not supported");
-            }
-        }
+        public virtual Task<IPackage> LoadPackageAsync(GameFile file, EPackageReadFlags readFlags)
+            => LoadPackageAsync(file, readFlags, CancellationToken.None);
 
         public virtual Task<IPackage> LoadPackageAsync(GameFile file, CancellationToken cancellationToken)
             => LoadPackageAsync(file, EPackageReadFlags.None, cancellationToken);
@@ -741,13 +747,10 @@ namespace CUE4Parse.FileProvider
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
 
-            // Lazy payload loaders are invoked later during property deserialization, well outside
-            // this method's scope. They intentionally do NOT capture `cancellationToken` — by the time
-            // they fire, the token may be long since cancelled or out of scope for unrelated reasons.
-            // Keeping them on sync SafeCreateReader matches existing behavior; making bulk-data lazy
-            // loading async is a separate project.
-            var lazyUbulk = ubulks.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => ubulks[0].SafeCreateReader(header)) : null;
-            var lazyUptnl = uptnls.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => uptnls[0].SafeCreateReader(header)) : null;
+            // The payload readers fire later, during property deserialization, so they stay on
+            // the sync path and do not capture the token.
+            var archiveName = (file as VfsEntry)?.Vfs.Name;
+            var (lazyUbulk, lazyUptnl) = GetPayloadReaders(ubulks, uptnls);
 
             switch (file)
             {
@@ -756,16 +759,16 @@ namespace CUE4Parse.FileProvider
                         ? await pakEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : pakEntry.CreateStreamingReader();
                     var uexpAr = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
-                case OsGameFile:
+                    return Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
+                case VersionedGameFile:
                     var uasset = await file.CreateReaderAsync(cancellationToken).ConfigureAwait(false);
                     var uexpArOs = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags), file);
+                    return Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
                         ? await ioStoreEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : ioStoreEntry.CreateStreamingReader();
-                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, readFlags), file);
+                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags), file);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
             }
@@ -842,10 +845,9 @@ namespace CUE4Parse.FileProvider
 
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls, true);
 
-            var dict = new Dictionary<string, byte[]> { { file.Path, file.Read() } };
-            if (uexp != null) dict[uexp.Path] = uexp.Read();
-            foreach (var ubulk in ubulks) dict[ubulk.Path] = ubulk.Read();
-            foreach (var uptnl in uptnls) dict[uptnl.Path] = uptnl.Read();
+            var dict = new Dictionary<string, byte[]>();
+            AddFileWithPayloads(dict, file, uexp, ubulks, uptnls);
+            AddOptionalSegmentFiles(file, dict);
 
             return dict;
         }
@@ -856,12 +858,43 @@ namespace CUE4Parse.FileProvider
         {
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls, true);
 
-            var dict = new Dictionary<string, byte[]> { { file.Path, await file.ReadAsync().ConfigureAwait(false) } };
+            var dict = new Dictionary<string, byte[]>();
+            await AddFileWithPayloadsAsync(dict, file, uexp, ubulks, uptnls).ConfigureAwait(false);
+            AddOptionalSegmentFiles(file, dict);
+
+            return dict;
+        }
+
+        /// <summary>
+        /// Reads a file and every payload that belongs to it into <paramref name="dict"/>, keyed by path.
+        /// </summary>
+        private static void AddFileWithPayloads(Dictionary<string, byte[]> dict, GameFile file,
+            GameFile? uexp, IReadOnlyList<GameFile> ubulks, IReadOnlyList<GameFile> uptnls)
+        {
+            dict[file.Path] = file.Read();
+            if (uexp != null) dict[uexp.Path] = uexp.Read();
+            foreach (var ubulk in ubulks) dict[ubulk.Path] = ubulk.Read();
+            foreach (var uptnl in uptnls) dict[uptnl.Path] = uptnl.Read();
+        }
+
+        /// <inheritdoc cref="AddFileWithPayloads"/>
+        private static async Task AddFileWithPayloadsAsync(Dictionary<string, byte[]> dict, GameFile file,
+            GameFile? uexp, IReadOnlyList<GameFile> ubulks, IReadOnlyList<GameFile> uptnls)
+        {
+            dict[file.Path] = await file.ReadAsync().ConfigureAwait(false);
             if (uexp != null) dict[uexp.Path] = await uexp.ReadAsync().ConfigureAwait(false);
             foreach (var ubulk in ubulks) dict[ubulk.Path] = await ubulk.ReadAsync().ConfigureAwait(false);
             foreach (var uptnl in uptnls) dict[uptnl.Path] = await uptnl.ReadAsync().ConfigureAwait(false);
+        }
 
-            return dict;
+        private void AddOptionalSegmentFiles(GameFile file, Dictionary<string, byte[]> dict)
+        {
+            if (file is not FIoStoreEntry ioEntry || ioEntry.IsOptionalSegmentPackage) return;
+            if (!Files.TryGetOptionalSegmentPackage(ioEntry.ChunkId.AsPackageId(), out var optionalFile)) return;
+            if (optionalFile is not FIoStoreEntry optionalEntry) return;
+
+            Files.FindPayloads(optionalEntry, out var optionalUexp, out var optionalUbulks, out var optionalUptnls, true);
+            AddFileWithPayloads(dict, optionalEntry, optionalUexp, optionalUbulks, optionalUptnls);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -1,3 +1,5 @@
+using CUE4Parse.GameTypes.DeadIsland2.Assets.Objects;
+using CUE4Parse.GameTypes.DFHO.Assets.Objects;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Core.Misc;
@@ -31,10 +33,10 @@ public class UStaticMesh : UObject
         bCooked = Ar.Ver >= EUnrealEngineObjectUE4Version.STATIC_MESH_REFACTOR && Ar.ReadBoolean();
         HasTangents = Ar.Ver >= EUnrealEngineObjectUE3Version.STATICMESH_VERTEXBUFFER_MERGE;
 
-        var Bounds = new FBoxSphereBounds();
+        var bounds = new FBoxSphereBounds();
         if (!stripDataFlags.IsEditorDataStripped() && Ar.Ver < EUnrealEngineObjectUE4Version.STATIC_MESH_REFACTOR)
         {
-            Bounds = new FBoxSphereBounds(Ar);
+            bounds = new FBoxSphereBounds(Ar);
         }
 
         if (Ar.Game == GAME_WutheringWaves && GetOrDefault<bool>("bUseStandaloneBodySetup"))
@@ -106,8 +108,10 @@ public class UStaticMesh : UObject
                 Ar.Position += sizeof(int); // bool - bIsMeshProxy
             }
 
-            RenderData = new FStaticMeshRenderData(Ar);
-            RenderData.Bounds = Bounds;
+            RenderData = new FStaticMeshRenderData(Ar)
+            {
+                Bounds = bounds
+            };
 
             Materials = new FPackageIndex[RenderData.LODs[0].Sections.Length];
             for (var i = 0; i < RenderData.LODs[0].Sections.Length; i++)
@@ -188,9 +192,11 @@ public class UStaticMesh : UObject
         {
             RenderData = Ar.Game switch
             {
+                GAME_DeadIsland2 => new FDeadIsland2StaticMeshRenderData(Ar),
+                GAME_DeltaForce => new FDeltaForceStaticMeshRenderData(Ar),
                 GAME_GameForPeace => new GFPStaticMeshRenderData(Ar, GetOrDefault<bool>("bIsStreamable")),
                 GAME_WeHappyFew => new GFPStaticMeshRenderData(Ar, true),
-                _ => RenderData = new FStaticMeshRenderData(Ar)
+                _ => new FStaticMeshRenderData(Ar)
             };
         }
 

@@ -16,7 +16,6 @@ public class UBinkMediaTexture : UTexture;
 
 public class UTexture : UUnrealMaterial, IAssetUserData
 {
-    
     public FGuid LightingGuid { get; private set; }
     public TextureCompressionSettings CompressionSettings { get; private set; }
     public TextureGroup LODGroup { get; private set; }
@@ -128,6 +127,7 @@ public class UTexture : UUnrealMaterial, IAssetUserData
             var skipOffset = Ar.Game switch
             {
                 GAME_WutheringWaves => Ar.AbsolutePosition + Ar.Read<long>(),
+                GAME_UE5_EA_Legacy or GAME_UE5_EA or GAME_TheMatrixAwakens => Ar.Read<long>(),
                 >= GAME_UE5_0 => Ar.AbsolutePosition + Ar.Read<long>(),
                 >= GAME_UE4_20 => Ar.Read<long>(),
                 _ => Ar.Read<int>()

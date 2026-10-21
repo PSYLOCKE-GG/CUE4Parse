@@ -35,6 +35,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
     private int _packageDataChunkCount = -1;
     public FIoContainerHeader? ContainerHeader => _containerHeader.Value;
     public Dictionary<FPackageId, GameFile> PackageIdIndex { get; private set; } = [];
+    public Dictionary<FPackageId, GameFile> OptionalSegmentPackageIdIndex { get; private set; } = [];
 
     internal int GetPackageDataChunkCount()
     {
@@ -99,7 +100,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         {
             containerStreams = new List<FArchive>((int) TocResource.Header.PartitionCount);
             var environmentPath = tocStream.Name.SubstringBeforeLast('.');
-            for (int i = 0; i < TocResource.Header.PartitionCount; i++)
+            for (var i = 0; i < TocResource.Header.PartitionCount; i++)
             {
                 try
                 {
@@ -117,7 +118,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         ContainerStreams = containerStreams;
         if (TocResource.ChunkPerfectHashSeeds != null)
         {
-            TocImperfectHashMapFallback = new();
+            TocImperfectHashMapFallback = new Dictionary<FIoChunkId, FIoOffsetAndLength>();
             if (TocResource.ChunkIndicesWithoutPerfectHash != null)
             {
                 foreach (var chunkIndexWithoutPerfectHash in TocResource.ChunkIndicesWithoutPerfectHash)
@@ -277,6 +278,11 @@ public partial class IoStoreReader : AbstractAesVfsReader
                     }
 
                     var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                    if (Game is GAME_SleeplessWilds && compressionMethod is Compression.CompressionMethod.Oodle &&
+                        compressedBuffer.Length > 1 && compressedBuffer[0] == 0x8C && compressedBuffer[1] == 0x14)
+                    {
+                        compressedBuffer[1] = 0x0C;
+                    }
                     Compression.Compression.Decompress(compressedBuffer, 0, (int) compressionBlock.CompressedSize, pooledUncompressed, 0,
                         (int) uncompressedSize, compressionMethod, reader);
                     await destination.WriteAsync(pooledUncompressed.AsMemory((int) offsetInBlock, sizeInBlock), cancellationToken).ConfigureAwait(false);
@@ -431,6 +437,11 @@ public partial class IoStoreReader : AbstractAesVfsReader
             else
             {
                 var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                if (Game is GAME_SleeplessWilds && compressionMethod is Compression.CompressionMethod.Oodle &&
+                    decrypted.Length > 1 && decrypted[0] == 0x8C && decrypted[1] == 0x14)
+                {
+                    decrypted[1] = 0x0C;
+                }
                 Compression.Compression.Decompress(decrypted, 0, (int) compressionBlock.CompressedSize, result.Buffer, 0,
                     uncompressedSize, compressionMethod, reader);
             }
@@ -475,6 +486,11 @@ public partial class IoStoreReader : AbstractAesVfsReader
                 else
                 {
                     var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                    if (Game is GAME_SleeplessWilds && compressionMethod is Compression.CompressionMethod.Oodle &&
+                        decrypted.Length > 1 && decrypted[0] == 0x8C && decrypted[1] == 0x14)
+                    {
+                        decrypted[1] = 0x0C;
+                    }
                     Compression.Compression.Decompress(decrypted, 0, (int) compressionBlock.CompressedSize, result.Buffer, 0,
                         uncompressedSize, compressionMethod, reader);
                 }
@@ -564,6 +580,11 @@ public partial class IoStoreReader : AbstractAesVfsReader
                     }
 
                     var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                    if (Game is GAME_SleeplessWilds && compressionMethod is Compression.CompressionMethod.Oodle &&
+                        compressedBuffer.Length > 1 && compressedBuffer[0] == 0x8C && compressedBuffer[1] == 0x14)
+                    {
+                        compressedBuffer[1] = 0x0C;
+                    }
                     Compression.Compression.Decompress(compressedBuffer, 0, (int)compressionBlock.CompressedSize, pooledUncompressed, 0,
                         (int) uncompressedSize, compressionMethod, reader);
                     src = pooledUncompressed;
@@ -656,6 +677,11 @@ public partial class IoStoreReader : AbstractAesVfsReader
                     }
 
                     var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                    if (Game is GAME_SleeplessWilds && compressionMethod is Compression.CompressionMethod.Oodle &&
+                        compressedBuffer.Length > 1 && compressedBuffer[0] == 0x8C && compressedBuffer[1] == 0x14)
+                    {
+                        compressedBuffer[1] = 0x0C;
+                    }
                     Compression.Compression.Decompress(compressedBuffer, 0, (int) compressionBlock.CompressedSize, pooledUncompressed, 0,
                         (int) uncompressedSize, compressionMethod, reader);
                     src = pooledUncompressed;
@@ -783,6 +809,11 @@ public partial class IoStoreReader : AbstractAesVfsReader
                 }
 
                 var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                if (Game is GAME_SleeplessWilds && compressionMethod is Compression.CompressionMethod.Oodle &&
+                    compressedBuffer.Length > 1 && compressedBuffer[0] == 0x8C && compressedBuffer[1] == 0x14)
+                {
+                    compressedBuffer[1] = 0x0C;
+                }
                 Compression.Compression.Decompress(compressedBuffer, 0, (int) compressionBlock.CompressedSize, uncompressedBuffer, 0,
                     (int) uncompressedSize, compressionMethod, reader);
                 src = uncompressedBuffer;
@@ -887,6 +918,11 @@ public partial class IoStoreReader : AbstractAesVfsReader
                     }
 
                     var compressionMethod = TocResource.CompressionMethods[compressionBlock.CompressionMethodIndex];
+                    if (Game is GAME_SleeplessWilds && compressionMethod is Compression.CompressionMethod.Oodle &&
+                        compressedBuffer.Length > 1 && compressedBuffer[0] == 0x8C && compressedBuffer[1] == 0x14)
+                    {
+                        compressedBuffer[1] = 0x0C;
+                    }
                     Compression.Compression.Decompress(compressedBuffer, 0, (int) compressionBlock.CompressedSize, uncompressedBuffer, 0,
                         (int) uncompressedSize, compressionMethod, reader);
                     src = uncompressedBuffer;
@@ -1002,6 +1038,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
             ? (byte) EIoChunkType5.ExportBundleData
             : (byte) EIoChunkType.ExportBundleData;
         PackageIdIndex = new Dictionary<FPackageId, GameFile>(GetPackageDataChunkCount());
+        OptionalSegmentPackageIdIndex = [];
         var pendingDirectories = new Stack<DirectoryTraversal>(64);
         pendingDirectories.Push(new DirectoryTraversal(0U, mountPointLength));
 
@@ -1033,13 +1070,23 @@ public partial class IoStoreReader : AbstractAesVfsReader
 
                 var entry = new FIoStoreEntry(this, path, fileEntry.UserData);
                 ref readonly var chunkId = ref TocResource.ChunkIds[fileEntry.UserData];
-                // Normal package data uses chunk index zero. Some optional segments use a non-zero index,
-                // while older containers identify them only through the ".o" package-path modifier.
-                if (chunkId.ChunkType == packageDataChunkType &&
-                    chunkId._chunkIndex == 0 && !FIoStoreEntry.IsOptionalPackagePath(path))
+                var isPackageDataChunk = chunkId.ChunkType == packageDataChunkType;
+                if (isPackageDataChunk)
                 {
-                    PackageIdIndex[chunkId.AsPackageId()] = entry;
+                    // The multi output index is what UE uses to tell the save realms apart: a base realm
+                    // chunk always has index 0 while a non-zero index is the optional segment UE loads
+                    // on top of the package.
+                    if (chunkId._chunkIndex != 0)
+                    {
+                        OptionalSegmentPackageIdIndex[chunkId.AsPackageId()] = entry;
+                    }
+                    else if (!entry.IsOptionalPackage)
+                    {
+                        // an optional segment cooked with index 0 replaces the package, it must not shadow it
+                        PackageIdIndex[chunkId.AsPackageId()] = entry;
+                    }
                 }
+
                 files[path] = entry;
 
                 file = fileEntry.NextFileEntry;
@@ -1061,8 +1108,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         {
             if (Game >= GAME_UE5_0)
                 throw;
-            else
-                return null!;
+            return null!;
         }
     }
 

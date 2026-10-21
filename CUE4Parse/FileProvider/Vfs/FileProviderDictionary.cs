@@ -10,11 +10,13 @@ namespace CUE4Parse.FileProvider.Vfs
 {
     public class FileProviderDictionary : IReadOnlyDictionary<string, GameFile>
     {
-        private readonly ConcurrentBag<KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>> _indicesBag = new ();
+        private readonly ConcurrentBag<KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>> _indicesBag = [];
 
         private ConcurrentDictionary<FPackageId, GameFile>? _byId;
+        private ConcurrentDictionary<FPackageId, GameFile>? _optionalById;
         private int _count;
         public IReadOnlyDictionary<FPackageId, GameFile> ById => GetPackageIndex();
+        public IReadOnlyDictionary<FPackageId, GameFile> OptionalById => GetOptionalSegmentPackageIndex();
 
         private readonly KeyEnumerable _keys;
         public IEnumerable<string> Keys => _keys;
@@ -63,8 +65,7 @@ namespace CUE4Parse.FileProvider.Vfs
             if (capacity <= 0 || Volatile.Read(ref _byId) is not null)
                 return;
 
-            var packageIndex = new ConcurrentDictionary<FPackageId, GameFile>(
-                Environment.ProcessorCount, capacity);
+            var packageIndex = new ConcurrentDictionary<FPackageId, GameFile>(Environment.ProcessorCount, capacity);
             Interlocked.CompareExchange(ref _byId, packageIndex, null);
         }
 
@@ -85,6 +86,30 @@ namespace CUE4Parse.FileProvider.Vfs
             return Interlocked.CompareExchange(ref _byId, newPackageIndex, null) ?? newPackageIndex;
         }
 
+        private ConcurrentDictionary<FPackageId, GameFile> GetOptionalSegmentPackageIndex()
+        {
+            var packageIndex = Volatile.Read(ref _optionalById);
+            if (packageIndex is not null)
+                return packageIndex;
+
+            var newPackageIndex = new ConcurrentDictionary<FPackageId, GameFile>();
+            return Interlocked.CompareExchange(ref _optionalById, newPackageIndex, null) ?? newPackageIndex;
+        }
+
+        /// <summary>
+        /// Tries to find the optional segment package ("Foo.o.uasset") cooked for the package
+        /// with the given id. Unreal Engine loads and merges it together with the package.
+        /// </summary>
+        public bool TryGetOptionalSegmentPackage(FPackageId packageId, [MaybeNullWhen(false)] out GameFile file)
+        {
+            var packageIndex = Volatile.Read(ref _optionalById);
+            if (packageIndex is not null && packageIndex.TryGetValue(packageId, out file))
+                return true;
+
+            file = null;
+            return false;
+        }
+
         public void FindPayloads(GameFile file, out GameFile? uexp, out IReadOnlyList<GameFile> ubulks, out IReadOnlyList<GameFile> uptnls, bool cookedIndexLookup = false)
         {
             uexp = null;
@@ -97,9 +122,11 @@ namespace CUE4Parse.FileProvider.Vfs
             var path = file.PathWithoutExtension;
             if (cookedIndexLookup && file is FIoStoreEntry { IsUePackage: true } entry)
             {
+                // payloads of the package and of its optional segment share the package id, so the multi
+                // output index is what tells the two save realms apart (see FIoChunkId)
                 foreach (var payload in entry.IoStoreReader.Files.Values)
                 {
-                    if (!payload.IsUePackagePayload || payload is not FIoStoreEntry y || y.ChunkId.ChunkId != entry.ChunkId.ChunkId)
+                    if (!payload.IsUePackagePayload || payload is not FIoStoreEntry y || y.ChunkId.ChunkId != entry.ChunkId.ChunkId || y.ChunkId._chunkIndex != entry.ChunkId._chunkIndex)
                         continue;
                     switch (payload.Extension)
                     {
@@ -112,7 +139,7 @@ namespace CUE4Parse.FileProvider.Vfs
                     }
                 }
             }
-            else if (file is VfsEntry {Vfs: { } vfs})
+            else if (file is VfsEntry { Vfs: AbstractVfsReader vfs })
             {
                 vfs.Files.TryGetValue(path + ".uexp", out uexp);
                 if (vfs.Files.TryGetValue(path + ".ubulk", out var ubulkVfs))
@@ -131,7 +158,8 @@ namespace CUE4Parse.FileProvider.Vfs
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddFiles(IReadOnlyDictionary<string, GameFile> newFiles, long readOrder = 0,
-            IReadOnlyDictionary<FPackageId, GameFile>? packageFiles = null)
+            IReadOnlyDictionary<FPackageId, GameFile>? packageFiles = null,
+            IReadOnlyDictionary<FPackageId, GameFile>? optionalSegmentPackageFiles = null)
         {
             if (packageFiles is null)
             {
@@ -154,8 +182,24 @@ namespace CUE4Parse.FileProvider.Vfs
             }
 
             _indicesBag.Add(new KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>(readOrder, newFiles));
-            Interlocked.Add(ref _count, newFiles.Count);
+            Interlocked.Add(ref _count, CountVisible(newFiles));
             InvalidateSortCache();
+
+            if (optionalSegmentPackageFiles is { Count: > 0 })
+            {
+                var optionalSegmentIndex = GetOptionalSegmentPackageIndex();
+                foreach (var (packageId, file) in optionalSegmentPackageFiles)
+                    optionalSegmentIndex[packageId] = file;
+            }
+        }
+
+        /// <summary>
+        /// Number of files that are actually listed. Files cooked as part of another file (see
+        /// <see cref="GameFile.IsHidden"/>) stay resolvable by path but are not enumerated.
+        /// </summary>
+        private static int CountVisible(IReadOnlyDictionary<string, GameFile> files)
+        {
+            return files.Values.Count(file => !file.IsHidden);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -163,6 +207,7 @@ namespace CUE4Parse.FileProvider.Vfs
         {
             _indicesBag.Clear();
             Volatile.Read(ref _byId)?.Clear();
+            Volatile.Read(ref _optionalById)?.Clear();
             Interlocked.Exchange(ref _count, 0);
             InvalidateSortCache();
         }
@@ -219,6 +264,7 @@ namespace CUE4Parse.FileProvider.Vfs
             {
                 foreach (var entry in index.Value)
                 {
+                    if (entry.Value.IsHidden) continue;
                     yield return entry;
                 }
             }
@@ -243,8 +289,9 @@ namespace CUE4Parse.FileProvider.Vfs
                 var sortedIndices = _orig.GetSortedIndices();
                 foreach (var index in sortedIndices)
                 {
-                    foreach (var key in index.Value.Keys)
+                    foreach (var (key, value) in index.Value)
                     {
+                        if (value.IsHidden) continue;
                         yield return key;
                     }
                 }
@@ -267,9 +314,10 @@ namespace CUE4Parse.FileProvider.Vfs
                 var sortedIndices = _orig.GetSortedIndices();
                 foreach (var index in sortedIndices)
                 {
-                    foreach (var key in index.Value.Values)
+                    foreach (var value in index.Value.Values)
                     {
-                        yield return key;
+                        if (value.IsHidden) continue;
+                        yield return value;
                     }
                 }
             }

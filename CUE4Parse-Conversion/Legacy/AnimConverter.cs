@@ -261,6 +261,8 @@ namespace CUE4Parse_Conversion.Animations
             => animSeq.ConvertAdditive(animSeq.OriginalSequence.RefPoseSeq?.Load<UAnimSequence>(), skeleton);
         public static CAnimSequence ConvertAdditive(this CAnimSequence animSeq, UAnimSequence? refPoseSeq, USkeleton skeleton)
         {
+            animSeq._hasAdditiveTracks = false; // the tracks become full poses now
+
             var refFrameIndex = animSeq.OriginalSequence.RefFrameIndex;
             var refPoseType = animSeq.OriginalSequence.RefPoseType;
 
@@ -303,13 +305,11 @@ namespace CUE4Parse_Conversion.Animations
             for (var frameIndex = 0; frameIndex < additivePoses.Length; frameIndex++)
             {
                 var addPose = additivePoses[frameIndex];
-                var rawIndex = refPoseType == EAdditiveBasePoseType.ABPT_AnimScaled
-                    ? frameIndex
-                    : refFrameIndex;
-                var refIndex = maxRefPosFrame > 0
-                    ? Math.Clamp(rawIndex % maxRefPosFrame, 0, maxRefPosFrame - 1)
-                    : 0;
-                var refPose = (FCompactPose)referencePoses[refIndex].Clone();
+                var refPose = (FCompactPose)referencePoses[refPoseType switch
+                {
+                    EAdditiveBasePoseType.ABPT_AnimScaled => frameIndex % maxRefPosFrame,
+                    _ => 0 // LoadAsPoses(seq, skel, refFrame) and LoadRestAsPoses return a single pose
+                }].Clone();
 
                 switch (animSeq.OriginalSequence.AdditiveAnimType)
                 {

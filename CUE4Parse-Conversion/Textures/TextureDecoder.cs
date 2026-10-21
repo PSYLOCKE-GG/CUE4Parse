@@ -315,7 +315,7 @@ public static class TextureDecoder
                 }
                 else
                 {
-                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC1);
+                    data = BCDecoder.BC1(bytes, sizeX, sizeY, sizeZ);
                 }
                 colorType = EPixelFormat.PF_R8G8B8A8;
                 break;
@@ -328,7 +328,7 @@ public static class TextureDecoder
                 }
                 else
                 {
-                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC2);
+                    data = BCDecoder.BC2(bytes, sizeX, sizeY, sizeZ);
                 }
                 colorType = EPixelFormat.PF_R8G8B8A8;
                 break;
@@ -340,7 +340,7 @@ public static class TextureDecoder
                 }
                 else
                 {
-                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC3);
+                    data = BCDecoder.BC3(bytes, sizeX, sizeY, sizeZ);
                 }
                 colorType = EPixelFormat.PF_R8G8B8A8;
                 break;
@@ -383,7 +383,7 @@ public static class TextureDecoder
                 if (UseAssetRipperTextureDecoder)
                     Bc4.Decompress<ColorBGRA<byte>, byte>(bytes, sizeX, sizeY * sizeZ, out data);
                 else
-                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC4);
+                    data = BCDecoder.BC4(bytes, sizeX, sizeY, sizeZ);
                 colorType = EPixelFormat.PF_B8G8R8A8;
                 break;
             case EPixelFormat.PF_BC5:
@@ -396,7 +396,7 @@ public static class TextureDecoder
                 else
                 {
                     // Blue channel is already restored in BCDecoder.BC5
-                    data = BCDecoder.DecodeWithPartialBlocks(bytes, sizeX, sizeY, sizeZ, BCDecoder.BC5);
+                    data = BCDecoder.BC5(bytes, sizeX, sizeY, sizeZ);
                 }
                 colorType = EPixelFormat.PF_B8G8R8A8;
                 break;
@@ -498,7 +498,10 @@ public static class TextureDecoder
                 data = CustomFormatDecoder.B4G4R4A4(bytes, sizeX, sizeY, sizeZ);
                 colorType = EPixelFormat.PF_B8G8R8A8;
                 break;
-
+            case EPixelFormat.PF_A2B10G10R10:
+                data = CustomFormatDecoder.A2B10G10R10(bytes, sizeX, sizeY, sizeZ);
+                colorType = EPixelFormat.PF_R8G8B8A8;
+                break;
             //SECTION: raw formats. Do nothing, we return original format and data
             case EPixelFormat.PF_A8R8G8B8:
             case EPixelFormat.PF_B8G8R8A8:

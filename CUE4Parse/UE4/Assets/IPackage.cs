@@ -14,6 +14,7 @@ public interface IPackage
 {
     public string Name { get; set; }
     public IFileProvider? Provider { get; }
+    public string? ArchiveName { get; }
     public TypeMappings? Mappings { get; }
     public EPackageReadFlags ReadFlags => EPackageReadFlags.None;
 

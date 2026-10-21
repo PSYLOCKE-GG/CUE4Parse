@@ -19,8 +19,8 @@ namespace CUE4Parse.UE4.Assets;
 [JsonConverter(typeof(PackageConverter))]
 public abstract class AbstractUePackage : UObject, IPackage
 {
-    
     public IFileProvider? Provider { get; }
+    public string? ArchiveName { get; }
     public TypeMappings? Mappings => Provider?.MappingsForGame;
     public EPackageReadFlags ReadFlags { get; protected set; }
     public GameFile? SourceFile { get; internal set; }
@@ -52,13 +52,17 @@ public abstract class AbstractUePackage : UObject, IPackage
         }
     }
 
-    protected AbstractUePackage(string name, IFileProvider? provider)
+    protected AbstractUePackage(string name, IFileProvider? provider, string? archiveName = null)
     {
         Name = name;
         Provider = provider;
+        ArchiveName = archiveName;
         Flags |= EObjectFlags.RF_WasLoaded;
     }
 
+    /// <summary>
+    /// TODO: make this protected and use <see cref="LoadableObjectExtensions.IsA{T}"/> to type check instead
+    /// </summary>
     public UObject ConstructObject(ResolvedObject? struc, IPackage? owner = null, EObjectFlags flags = EObjectFlags.RF_NoFlags)
     {
         UObject? obj = null;
@@ -122,13 +126,19 @@ public abstract class AbstractUePackage : UObject, IPackage
         }
         catch (Exception e)
         {
-            // Lenient mode logs and drops a deserialization failure here, leaving partial data.
-            // Strict mode (and the existing global) re-throws so the failing field/struct surfaces.
-            // Only thrown failures are surfaced — a clean read that under-consumes the export is
-            // intentionally tolerated, since many export types leave trailing bytes CUE4Parse skips.
+            // Strict mode re-throws so the failing field/struct surfaces. A clean read that
+            // under-consumes the export is tolerated; many export types leave trailing bytes.
             if (Globals.FatalObjectSerializationErrors || strict)
-                throw new ParserException(Ar, $"Could not read {obj.ExportType} '{obj.Name}' correctly", e);
-            Log.Error(e, "Could not read {0} correctly", obj.ExportType);
+                throw new ParserException(Ar, $"Could not read {obj.ExportType} named {obj.Name} correctly", e);
+
+            if (e is ParserException)
+            {
+                Log.Error(e, "Could not read {0} named {1} correctly", obj.ExportType, obj.Name);
+            }
+            else
+            {
+                Log.Error(e, "Could not read {0} named {1} correctly ({2})", obj.ExportType, obj.Name, Ar.Name);
+            }
         }
     }
 
@@ -146,7 +156,7 @@ public abstract class AbstractUePackage : UObject, IPackage
 }
 
 [JsonConverter(typeof(ResolvedObjectConverter))]
-public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : IObject
+public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : ILoadableObject
 {
     public readonly IPackage Package = package;
 
@@ -173,6 +183,29 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
             var direct = GetDirectObject();
             return direct != null ? new Lazy<UObject>(() => direct) : null;
         }
+    }
+
+    // same walk as ConstructObject (class, supers, then mappings)
+    public Type? GetObjectType()
+    {
+        var cls = Class;
+        var name = cls?.Name.Text;
+        while (!string.IsNullOrEmpty(name))
+        {
+            if (ObjectTypeRegistry.Get(name) is { } type) return type;
+
+            cls = cls?.Super;
+            if (cls != null)
+            {
+                name = cls.Name.Text;
+                continue;
+            }
+
+            if (Package.Mappings?.Types.TryGetValue(name, out var struc) != true || struc.SuperType == name) break;
+            name = struc.SuperType;
+        }
+
+        return Class != null ? typeof(UObject) : null;
     }
 
     public string GetFullName(bool includeOuterMostName = true, bool includeClassPackage = false)
@@ -267,6 +300,7 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
         }
         catch (Exception e) when (!e.IsReadFailure())
         {
+            Log.Error(e, "Could not load {0} named {1} correctly", Class?.Name, Name);
             export = null;
         }
         return export != null;
@@ -284,6 +318,7 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
         }
         catch (Exception e) when (!e.IsReadFailure())
         {
+            Log.Error(e, "Could not load {0} named {1} correctly", Class?.Name, Name);
             return Task.FromResult<UObject?>(null);
         }
     }

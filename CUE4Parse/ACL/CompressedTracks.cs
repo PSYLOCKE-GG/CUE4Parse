@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using static CUE4Parse.ACL.ACLNative;
 
 namespace CUE4Parse.ACL
