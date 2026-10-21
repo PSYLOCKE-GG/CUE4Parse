@@ -657,14 +657,23 @@ namespace CUE4Parse.FileProvider
         /// <summary>
         /// Wraps the first payload of each kind into the deferred readers the package constructors
         /// take. Payloads are resolved when bulk data is actually read, not when the package loads.
+        /// A container entry streams: the reader decompresses only the blocks a read touches, so an
+        /// availability check reads nothing and a mip read decompresses only that mip's range.
         /// </summary>
         private static (Func<FByteBulkDataHeader?, FArchive?>? Ubulk, Func<FByteBulkDataHeader?, FArchive?>? Uptnl) GetPayloadReaders(
             IReadOnlyList<GameFile> ubulks, IReadOnlyList<GameFile> uptnls)
         {
-            var ubulk = ubulks.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => ubulks[0].SafeCreateReader(header)) : null;
-            var uptnl = uptnls.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => uptnls[0].SafeCreateReader(header)) : null;
+            var ubulk = ubulks.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => PayloadReader(ubulks[0], header)) : null;
+            var uptnl = uptnls.Count > 0 ? new Func<FByteBulkDataHeader?, FArchive?>(header => PayloadReader(uptnls[0], header)) : null;
             return (ubulk, uptnl);
         }
+
+        private static FArchive? PayloadReader(GameFile file, FByteBulkDataHeader? header) => file switch
+        {
+            FIoStoreEntry entry => entry.CreateStreamingReader(),
+            FPakEntry entry => entry.CreateStreamingReader(),
+            _ => file.SafeCreateReader(header),
+        };
 
         private IPackage LoadPackageInner(GameFile file, EPackageReadFlags readFlags)
         {
