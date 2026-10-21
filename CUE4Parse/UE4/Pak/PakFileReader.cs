@@ -261,8 +261,6 @@ public partial class PakFileReader : AbstractAesVfsReader
                     return await ABIExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
                 case EGame.GAME_eBaseballProSpirit:
                     return ProSpiExtract(reader, pakEntry, alignment, header, offset, requestedSize);
-                case GAME_ChasingKaleidoRIDER:
-                    return CKRExtract(reader, pakEntry, header);
             }
 
             var compressionBlockSize = (int) pakEntry.CompressionBlockSize;
@@ -332,8 +330,6 @@ public partial class PakFileReader : AbstractAesVfsReader
                 return await ABIExtractAsync(reader, pakEntry, cancellationToken).ConfigureAwait(false);
             case EGame.GAME_eBaseballProSpirit:
                 return ProSpiExtract(reader, pakEntry, alignment, header, offset, requestedSize);
-            case GAME_ChasingKaleidoRIDER:
-                return CKRExtract(reader, pakEntry, header);
         }
 
         var readOffset = offset & ~((long) alignment - 1);

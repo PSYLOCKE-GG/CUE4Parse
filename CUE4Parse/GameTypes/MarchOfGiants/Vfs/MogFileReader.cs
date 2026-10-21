@@ -211,6 +211,12 @@ public sealed class MogFileReader : AbstractAesVfsReader
         return mogEntry.Read(header);
     }
 
+    public override Task<byte[]> ExtractAsync(VfsEntry entry, FByteBulkDataHeader? header = null, System.Threading.CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Extract(entry, header));
+    }
+
     private void ClearCache()
     {
         lock (_blockCache)

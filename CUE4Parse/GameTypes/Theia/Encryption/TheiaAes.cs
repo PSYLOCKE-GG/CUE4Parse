@@ -9,7 +9,7 @@ public static class TheiaAes
     /// transparently via <see cref="FTheiaArchive"/>; this delegate exists only so the
     /// provider's encrypted-reader gate accepts the container.
     /// </summary>
-    public static byte[] TheiaPassthrough(byte[] bytes, int beginOffset, int count, bool isIndex, IAesVfsReader reader)
+    public static byte[] TheiaPassthrough(byte[] bytes, int beginOffset, int count, bool isIndex, IAesVfsReader reader, object? customData = null)
     {
         if (bytes.Length < beginOffset + count)
             throw new IndexOutOfRangeException("beginOffset + count is larger than the length of bytes");

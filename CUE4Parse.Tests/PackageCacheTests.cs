@@ -31,6 +31,7 @@ public class PackageCacheTests
     {
         public string Name { get; set; } = "";
         public IFileProvider? Provider => null;
+        public string? ArchiveName => null;
         public TypeMappings? Mappings => null;
         public FPackageFileSummary Summary => throw new NotSupportedException();
         public FNameEntrySerialized[] NameMap => [];
