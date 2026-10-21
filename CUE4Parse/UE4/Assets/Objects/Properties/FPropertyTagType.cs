@@ -92,12 +92,9 @@ public abstract class FPropertyTagType
             case EnumProperty enumProp when type.IsEnum:
                 var storedEnum = enumProp.Value.Text;
                 var search = storedEnum.SubstringAfter("::"); // Strip enum name on namespaced and enum class enums
-                var values = type.GetEnumNames();
-                var idx = Array.FindIndex(values, it => it == search);
-                if (idx != -1) return type.GetEnumValues().GetValue(idx);
-                // Values newer than the mappings have no name and serialize as their raw number
-                // ("EMyEnum::7"). Keep that identity instead of falling back to the enum's zero member.
-                return ulong.TryParse(search, out var raw) ? Enum.ToObject(type, raw) : null;
+                // A name, or the raw number of a value newer than the mappings ("EMyEnum::7"), which keeps
+                // its identity instead of falling back to the enum's zero member.
+                return Enum.TryParse(type, search, out var value) ? value : null;
             //TODO There are also Enums stored as ByteProperty but UModel uses them nowhere besides in UE2
             case FPropertyTagType<UScriptMap> mapProp when type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>):
                 return CreateDictionary(type, mapProp.Value!.Properties);
