@@ -183,6 +183,7 @@ public class FShaderPipeline
 
 public class FShader
 {
+    [JsonIgnore] public readonly long FrozenObjectOffset;
     public FShaderParameterBindings Bindings;
     public FShaderParameterMapInfo ParameterMapInfo;
     public FHashedName[] UniformBufferParameterStructs;
@@ -197,6 +198,7 @@ public class FShader
 
     public FShader(FMemoryImageArchive Ar)
     {
+        FrozenObjectOffset = Ar.Position;
         if (Ar.Game is GAME_DeadIsland2)
         {
             Bindings = new FShaderParameterBindings(Ar);
