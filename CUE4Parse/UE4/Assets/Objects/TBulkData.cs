@@ -184,6 +184,8 @@ public abstract class TBulkData<T> where T: struct
 
             archive = uptnlAr;
             position = uptnlAr.Length == Header.SizeOnDisk ? 0 : Header.OffsetInFile;
+            if (position + Header.SizeOnDisk > uptnlAr.Length)
+                return false;
         }
         else if (BulkDataFlags.HasFlag(BULKDATA_PayloadInSeperateFile | BULKDATA_MemoryMappedPayload))
         {

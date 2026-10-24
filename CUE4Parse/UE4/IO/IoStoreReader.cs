@@ -143,6 +143,10 @@ public partial class IoStoreReader : AbstractAesVfsReader
         }
     }
 
+    // UE's FIoStoreReaderImpl::Read resolves a request to Min(size, chunkLength - offset), or zero past the end.
+    public static long ClampToChunk(long chunkSize, long offsetInChunk, long requestedSize)
+        => offsetInChunk <= chunkSize ? Math.Min(requestedSize, chunkSize - offsetInChunk) : 0;
+
     public override byte[] Extract(VfsEntry entry, FByteBulkDataHeader? header = null)
     {
         if (!(entry is FIoStoreEntry ioEntry) || entry.Vfs != this) throw new ArgumentException($"Wrong io store reader, required {entry.Vfs.Path}, this is {Path}");
@@ -152,7 +156,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         long offsetInFile = 0;
         if (header is { } bulk)
         {
-            size = bulk.SizeOnDisk;
+            size = ClampToChunk(ioEntry.Size, bulk.OffsetInFile, bulk.SizeOnDisk);
             offsetInFile = bulk.OffsetInFile;
         }
 
@@ -174,7 +178,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         long offsetInFile = 0;
         if (header is { } bulk)
         {
-            size = bulk.SizeOnDisk;
+            size = ClampToChunk(ioEntry.Size, bulk.OffsetInFile, bulk.SizeOnDisk);
             offsetInFile = bulk.OffsetInFile;
         }
 
@@ -192,7 +196,7 @@ public partial class IoStoreReader : AbstractAesVfsReader
         long offsetInFile = 0;
         if (header is { } bulk)
         {
-            size = bulk.SizeOnDisk;
+            size = ClampToChunk(ioEntry.Size, bulk.OffsetInFile, bulk.SizeOnDisk);
             offsetInFile = bulk.OffsetInFile;
         }
 
