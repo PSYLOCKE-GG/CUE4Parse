@@ -135,7 +135,10 @@ public class FReflectionCaptureData
     public int CubemapSize;
     public float AverageBrightness;
     public float Brightness;
+    /// <summary>The captured cube as RGBA16F texels: each mip from the largest, each its six faces, each face row-major.</summary>
     [JsonIgnore] public byte[]? FullHDRCapturedData;
+    /// <summary>The captured cube as RG11B10 texels, laid out as <see cref="FullHDRCapturedData"/>.</summary>
+    [JsonIgnore] public byte[]? EncodedHDRCapturedData;
     public FPackageIndex? EncodedCaptureData;
 
     public FReflectionCaptureData() { }
@@ -158,8 +161,8 @@ public class FReflectionCaptureData
             return;
         }
 
-        //FullHDRCapturedData = Ar.ReadArray<byte>(); // Can also be stripped, but still a byte[]
-        Ar.SkipFixedArray(1); // Skip for now
+        // MapBuildData.cpp:331-339: the full HDR data, or an empty array for a platform that strips it.
+        FullHDRCapturedData = Ar.ReadArray<byte>();
         if (Ar.Game is GAME_FinalFantasy7Rebirth or GAME_ArenaBreakoutInfinite or GAME_ArenaBreakoutMobile) Ar.Position += 4;
         if (Ar.Game == GAME_HogwartsLegacy)
         {
@@ -174,7 +177,11 @@ public class FReflectionCaptureData
         }
         else
         {
-            Ar.SkipFixedArray(1);
+            // MapBuildData.cpp:347-358: the RG11B10 data from StoreReflectionCaptureEncodedHDRDataInRG11B10Format on,
+            // else a stripped array.
+            var encoded = Ar.ReadArray<byte>();
+            if (FUE5ReleaseStreamObjectVersion.Get(Ar) >= FUE5ReleaseStreamObjectVersion.Type.StoreReflectionCaptureEncodedHDRDataInRG11B10Format)
+                EncodedHDRCapturedData = encoded;
         }
 
         if (Ar.Game is GAME_Valorant or GAME_TamasShadowveil) Ar.SkipFixedArray(1);
