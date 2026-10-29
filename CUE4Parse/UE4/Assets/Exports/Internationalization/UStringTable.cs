@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using CUE4Parse.FileProvider;
 using CUE4Parse.FileProvider.Vfs;
@@ -11,23 +10,19 @@ namespace CUE4Parse.UE4.Assets.Exports.Internationalization;
 
 public class UStringTable : UObject
 {
-    private static readonly ConcurrentDictionary<string, UStringTable> _cache = new();
-
     public FStringTable StringTable { get; private set; }
 
+    /// <summary>
+    /// Loads a string table into the shared owner. A table is shared content, and the shared
+    /// owner's store is its only cache, so a repeat lookup reuses the resident package.
+    /// </summary>
     internal static bool TryGet(IFileProvider provider, string tableId, [MaybeNullWhen(false)] out UStringTable table)
     {
-        if (_cache.TryGetValue(tableId, out table))
-            return true;
+        if (provider is not AbstractFileProvider owners)
+            return provider.TryLoadPackageObject(tableId, out table);
 
-        if (provider.TryLoadPackageObject(tableId, out table))
-        {
-            _cache.TryAdd(tableId, table);
-            return true;
-        }
-
-        table = null;
-        return false;
+        using var _ = owners.EnterOwner(owners.SharedOwner);
+        return provider.TryLoadPackageObject(tableId, out table);
     }
 
     public override void Deserialize(FAssetArchive Ar, long validPos)

@@ -1,3 +1,4 @@
+using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Assets.Exports.Engine;
 using CUE4Parse.UE4.Assets.Exports.Internationalization;
 using CUE4Parse.UE4.Assets.Objects;
@@ -181,6 +182,22 @@ public class FixtureStructuredAssetTests
         Assert.Equal("Hello from Frankfurt", table.StringTable.KeysToEntries["Greeting"]);
         Assert.Equal("Fixture 日本語 Ω äöü", table.StringTable.KeysToEntries["Unicode"]);
         Assert.Equal(string.Empty, table.StringTable.KeysToEntries["Empty"]);
+    }
+
+    [Fact]
+    public void StringTableLoadsIntoSharedOwnerWhileHeroOwnerIsCurrent()
+    {
+        using var provider = CreateMountedIoStoreProvider(FixtureSerialization.Tagged);
+        using var hero = provider.CreateOwner("hero");
+        using var _ = provider.EnterOwner(hero);
+        const string tableId = "CUE4ParseFixtures/Content/Fixtures/StringTables/ST_Fixed.ST_Fixed";
+
+        Assert.True(UStringTable.TryGet(provider, tableId, out var first));
+        Assert.True(UStringTable.TryGet(provider, tableId, out var second));
+
+        Assert.Same(first, second);
+        var package = Assert.IsAssignableFrom<AbstractUePackage>(first.Owner);
+        Assert.True(package.Owner?.IsShared);
     }
 
     private static UCurveTable LoadCurveTable(CUE4Parse.FileProvider.DefaultFileProvider provider, string name) =>
