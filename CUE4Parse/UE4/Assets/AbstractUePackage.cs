@@ -25,6 +25,9 @@ public abstract class AbstractUePackage : UObject, IPackage
     public EPackageReadFlags ReadFlags { get; protected set; }
     public GameFile? SourceFile { get; internal set; }
 
+    /// <summary>The lifetime this package was loaded into. Its imports resolve through the same owner.</summary>
+    public PackageOwner? Owner { get; internal set; }
+
     public abstract FPackageFileSummary Summary { get; }
     public abstract FNameEntrySerialized[] NameMap { get; }
     public abstract int ImportMapLength { get; }

@@ -35,7 +35,7 @@ public sealed class ExportInfo
             if (_loaded is not null) return _loaded;
             var sparse = _sparseLazy.Value;
             var (_, bytes) = PackageCache.MeasureParse(() => { _deserialize(sparse); return sparse; });
-            (Package.Provider as AbstractFileProvider)?.PackageCache.Grow(Package, bytes);
+            (Package as AbstractUePackage)?.Owner?.Store.Grow(Package, bytes);
             return _loaded = sparse;
         }
     }
