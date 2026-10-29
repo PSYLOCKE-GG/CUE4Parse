@@ -754,8 +754,8 @@ namespace CUE4Parse.FileProvider
         private async Task<IPackage> LoadPackageUnweighedAsync(GameFile file, EPackageReadFlags readFlags, CancellationToken cancellationToken)
             => (await LoadPackageInnerAsync(file, readFlags, cancellationToken).ConfigureAwait(false)).Package;
 
-        // Readers are created across awaits; the package parse after them is synchronous on one
-        // thread, so the cache weighs the package by the bytes that parse allocates.
+        // Readers are created across awaits, so their buffers are outside the measured parse. A package keeps
+        // its pre-buffered archive for the lifetime of its lazy exports, so that buffer weighs on the package too.
         private async Task<(IPackage Package, long Bytes)> LoadPackageInnerAsync(GameFile file, EPackageReadFlags readFlags, CancellationToken cancellationToken)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
@@ -773,18 +773,26 @@ namespace CUE4Parse.FileProvider
                         ? await pakEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : pakEntry.CreateStreamingReader();
                     var uexpAr = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return PackageCache.MeasureParse(() => Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file));
+                    return Weighed(PackageCache.MeasureParse(() => Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file)), pakUasset, uexpAr);
                 case VersionedGameFile:
                     var uasset = await file.CreateReaderAsync(cancellationToken).ConfigureAwait(false);
                     var uexpArOs = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return PackageCache.MeasureParse(() => Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file));
+                    return Weighed(PackageCache.MeasureParse(() => Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file)), uasset, uexpArOs);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
                         ? await ioStoreEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : ioStoreEntry.CreateStreamingReader();
-                    return PackageCache.MeasureParse(() => Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags), file));
+                    return Weighed(PackageCache.MeasureParse(() => Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags), file)), ioUasset);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
+            }
+
+            static (IPackage Package, long Bytes) Weighed((IPackage Package, long Bytes) parsed, params FArchive?[] archives)
+            {
+                var buffered = 0L;
+                foreach (var archive in archives)
+                    if (archive is FByteArchive) buffered += archive.Length;
+                return (parsed.Package, parsed.Bytes + buffered);
             }
         }
 
