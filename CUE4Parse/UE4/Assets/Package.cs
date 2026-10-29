@@ -373,7 +373,8 @@ namespace CUE4Parse.UE4.Assets
             if (Provider == null)
                 return null;
             Package? importPackage = null;
-            if (Provider.TryLoadPackage(outerMostObjectName, out var package) || Provider.TryLoadPackage(outerMostImport.ClassPackage.Text, out package))
+            var package = InOwner(() => Provider.TryLoadPackage(outerMostObjectName, out var p) || Provider.TryLoadPackage(outerMostImport.ClassPackage.Text, out p) ? p : null);
+            if (package is not null)
             {
                 if (package is IoPackage ioPackage)
                 {

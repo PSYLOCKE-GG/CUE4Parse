@@ -39,8 +39,11 @@ public sealed class IoPackage : AbstractUePackage
     public readonly FPackageObjectIndex[] ImportMap;
     public readonly FExportMapEntry[] ExportMap;
     public readonly FBulkDataMapEntry[] BulkDataMap;
-    public readonly Lazy<IoPackage?[]> ImportedPackages;
-    public readonly Lazy<IPackage?[][]> ImportedPackagesAllVersions;
+    /// <summary>The number of packages the base realm imports.</summary>
+    public int ImportedPackageCount => BaseRealm.ImportedPackageIds.Length;
+
+    /// <summary>Loads the base realm's imported package at <paramref name="index"/> through this package's owner.</summary>
+    public IoPackage? ResolveImportedPackage(int index) => ResolveImportedPackage(BaseRealm, index);
 
     /// <summary>
     /// The save realms of this package, base realm first. Unreal Engine cooks an IoStore package as
@@ -123,8 +126,6 @@ public sealed class IoPackage : AbstractUePackage
         ExportMap = baseRealm.ExportMap;
         BulkDataMap = baseRealm.BulkDataMap;
         ImportedPublicExportHashes = baseRealm.ImportedPublicExportHashes;
-        ImportedPackages = new Lazy<IoPackage?[]>(() => baseRealm.ImportedPackages.Select(package => package.Value).ToArray());
-        ImportedPackagesAllVersions = new Lazy<IPackage?[][]>(() => baseRealm.ImportedPackagesAllVersions.Select(packages => packages.Value).ToArray());
 
         if (!CanDeserialize) return;
 
@@ -322,24 +323,26 @@ public sealed class IoPackage : AbstractUePackage
             realm.Archive.BulkDataMap = realm.BulkDataMap;
         }
 
-        realm.ImportedPackages = realm.ImportedPackageIds.Select(packageId => new Lazy<IoPackage?>(() =>
-        {
-            // Optional segments can import the package they belong to; keep the merged instance.
-            if (IsSelfReference(packageId)) return this;
-            return provider?.TryLoadPackage(packageId, out var package) == true ? package : null;
-        })).ToArray();
-
-        realm.ImportedPackagesAllVersions = realm.ImportedPackageIds.Select((packageId, index) => new Lazy<IPackage?[]>(() =>
-        {
-            if (IsSelfReference(packageId)) return [this];
-            var package = realm.ImportedPackages[index].Value;
-            if (package == null) return [];
-            return provider?.TryLoadPackages(package.Name, out var packages) == true ? [.. packages] : [];
-        })).ToArray();
-
         return realm;
+    }
 
-        bool IsSelfReference(FPackageId packageId) => packageId.Equals(realm.PackageId);
+    // The package holds the ids; the owner holds the packages. Optional segments can import the
+    // package they belong to; that resolves to the merged instance.
+    private IoPackage? ResolveImportedPackage(RealmData realm, int index)
+    {
+        var packageId = realm.ImportedPackageIds[index];
+        if (packageId.Equals(realm.PackageId)) return this;
+        return Provider is IVfsFileProvider provider
+            ? InOwner(() => provider.TryLoadPackage(packageId, out var package) ? package : null)
+            : null;
+    }
+
+    private IPackage?[] ResolveImportedPackageVersions(RealmData realm, int index)
+    {
+        if (realm.ImportedPackageIds[index].Equals(realm.PackageId)) return [this];
+        var package = ResolveImportedPackage(realm, index);
+        if (package == null || Provider is not { } provider) return [];
+        return InOwner(() => provider.TryLoadPackages(package.Name, out var packages) ? [.. packages] : Array.Empty<IPackage?>());
     }
 
     private (FFilePackageStoreEntry? storeEntry, FPackageId[] importedPackageIds) GetStoreEntryAndImportedPackageIds(
@@ -585,21 +588,21 @@ public sealed class IoPackage : AbstractUePackage
         if (index.IsPackageImport)
         {
             var importedPublicExportHashes = realm.ImportedPublicExportHashes;
-            var importedPackages = realm.ImportedPackages;
+            var importedPackageCount = realm.ImportedPackageIds.Length;
             if (importedPublicExportHashes != null)
             {
                 var packageImportRef = index.AsPackageImportRef;
-                if (packageImportRef.ImportedPackageIndex < importedPackages.Length)
+                if (packageImportRef.ImportedPackageIndex < importedPackageCount)
                 {
                     var exportHash = importedPublicExportHashes[packageImportRef.ImportedPublicExportHashIndex];
-                    var pkg = importedPackages[packageImportRef.ImportedPackageIndex].Value;
+                    var pkg = ResolveImportedPackage(realm, (int) packageImportRef.ImportedPackageIndex);
                     if (pkg?.FindExportByPublicExportHash(exportHash) is { } export)
                     {
                         return export;
                     }
 
                     // search all previous versions
-                    var packages = realm.ImportedPackagesAllVersions[packageImportRef.ImportedPackageIndex].Value;
+                    var packages = ResolveImportedPackageVersions(realm, (int) packageImportRef.ImportedPackageIndex);
                     foreach (var asset in packages)
                     {
                         switch (asset)
@@ -626,9 +629,9 @@ public sealed class IoPackage : AbstractUePackage
             {
                 // Pre-finalization Zen: the low 32 bits of a package import reference are the target export's 32-bit export hash.
                 var packageImportRef = index.AsPackageImportRef;
-                if (packageImportRef.ImportedPackageIndex < importedPackages.Length)
+                if (packageImportRef.ImportedPackageIndex < importedPackageCount)
                 {
-                    var pkg = importedPackages[packageImportRef.ImportedPackageIndex].Value;
+                    var pkg = ResolveImportedPackage(realm, (int) packageImportRef.ImportedPackageIndex);
                     if (pkg != null)
                     {
                         for (var exportIndex = 0; exportIndex < pkg.ExportMap.Length; ++exportIndex)
@@ -643,18 +646,18 @@ public sealed class IoPackage : AbstractUePackage
             }
             else
             {
-                foreach (var package in importedPackages)
+                for (var i = 0; i < importedPackageCount; i++)
                 {
-                    if (package.Value?.FindExportByGlobalImportIndex(index) is { } export)
+                    if (ResolveImportedPackage(realm, i)?.FindExportByGlobalImportIndex(index) is { } export)
                     {
                         return export;
                     }
                 }
 
                 // search all previous versions
-                foreach (var packages in realm.ImportedPackagesAllVersions)
+                for (var i = 0; i < importedPackageCount; i++)
                 {
-                    foreach (var asset in packages.Value)
+                    foreach (var asset in ResolveImportedPackageVersions(realm, i))
                     {
                         switch (asset)
                         {
@@ -749,8 +752,6 @@ public sealed class IoPackage : AbstractUePackage
         public int CookedHeaderSize;
         public int AllExportDataOffset;
         public int ExportBaseIndex;
-        public Lazy<IoPackage?>[] ImportedPackages = null!;
-        public Lazy<IPackage?[]>[] ImportedPackagesAllVersions = null!;
     }
 
     private class ResolvedPakExportObject(int exportIndex, Package package) : ResolvedObject(package, exportIndex)

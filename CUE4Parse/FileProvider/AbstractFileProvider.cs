@@ -102,8 +102,22 @@ namespace CUE4Parse.FileProvider
             public void Dispose() => _provider._currentOwner.Value = _previous;
         }
 
+        /// <summary>
+        /// Path prefixes of the packages every lifetime reads. They load into <see cref="SharedOwner"/>
+        /// whatever the current owner is, and so do their imports. This is the one sharing rule.
+        /// </summary>
+        public IReadOnlyList<string> SharedPackagePrefixes { get; set; } = ["Engine/"];
+
         /// <summary>The owner a load of <paramref name="file"/> goes into.</summary>
-        private PackageOwner OwnerFor(GameFile file) => SharedOwner;
+        private PackageOwner OwnerFor(GameFile file)
+        {
+            var current = CurrentOwner;
+            if (current.IsShared) return current;
+            foreach (var prefix in SharedPackagePrefixes)
+                if (file.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return SharedOwner;
+            return current;
+        }
 
         private static bool Retains(PackageOwner owner) => owner.Store.Enabled;
 

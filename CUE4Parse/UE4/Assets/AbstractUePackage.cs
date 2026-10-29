@@ -28,6 +28,17 @@ public abstract class AbstractUePackage : UObject, IPackage
     /// <summary>The lifetime this package was loaded into. Its imports resolve through the same owner.</summary>
     public PackageOwner? Owner { get; internal set; }
 
+    /// <summary>
+    /// Runs a provider load with this package's owner as the current owner, so the loaded package
+    /// joins this package's lifetime or the shared one. Import resolution goes through here.
+    /// </summary>
+    protected internal T InOwner<T>(Func<T> load)
+    {
+        if (Owner is null || Provider is not AbstractFileProvider provider) return load();
+        using var _ = provider.EnterOwner(Owner);
+        return load();
+    }
+
     public abstract FPackageFileSummary Summary { get; }
     public abstract FNameEntrySerialized[] NameMap { get; }
     public abstract int ImportMapLength { get; }
@@ -272,9 +283,11 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
 
         // Reload via the originating file when known — Package.Name can be the "/Game/..."
         // store form, which not every provider path table can round-trip.
-        var flagged = Package.SourceFile is { } file
+        var package = Package as AbstractUePackage;
+        IPackage Reload() => Package.SourceFile is { } file
             ? provider.LoadPackage(file, readFlags)
             : provider.LoadPackage(Package.Name, readFlags);
+        var flagged = package is null ? Reload() : package.InOwner(Reload);
 
         // Same file, same export map: the export index carries over to the flagged instance.
         return flagged.GetExport(ExportIndex);

@@ -44,33 +44,19 @@ namespace CUE4Parse.UE4.Objects.UObject
         /// </summary>
         internal readonly int RealmIndex;
 
-        private WeakReference<ResolvedObject?>? _resolvedObject;
+        // Strong: the target lives in this package's owner or in the shared owner, which outlive it.
+        private ResolvedObject? _resolvedObject;
         public ResolvedObject? ResolvedObject
         {
             get
             {
-                var resolvedObject = _resolvedObject != null && _resolvedObject.TryGetTarget(out var target) ? target : null;
-                if (resolvedObject == null)
-                {
-                    if (Owner == null) return null;
-                    resolvedObject = Owner.ResolvePackageIndex(this);
-                    _resolvedObject = new WeakReference<ResolvedObject?>(resolvedObject);
-                }
-
-                return resolvedObject;
+                if (_resolvedObject == null && Owner != null)
+                    _resolvedObject = Owner.ResolvePackageIndex(this);
+                return _resolvedObject;
             }
         }
 
-        public ResolvedObject? ResolvedObjectNoCache
-        {
-            get
-            {
-                if (Owner == null) return null;
-                var resolvedObject = _resolvedObject != null && _resolvedObject.TryGetTarget(out var target) ? target : null;
-                if (resolvedObject != null) return resolvedObject;
-                return Owner.ResolvePackageIndex(this);
-            }
-        }
+        public ResolvedObject? ResolvedObjectNoCache => _resolvedObject ?? Owner?.ResolvePackageIndex(this);
 
         public bool IsNull => Index == 0;
         public bool IsExport => Index > 0;
