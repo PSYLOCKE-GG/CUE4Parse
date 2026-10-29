@@ -136,7 +136,7 @@ namespace CUE4Parse.UE4.Assets.Readers
                 Log.Warning("Object has unexpected type {ObjType}, expected type {Type}", obj.GetType().Name, typeof(T).Name);
 
                 return null;
-            });
+            }, System.Threading.LazyThreadSafetyMode.PublicationOnly);
         }
 
         public override UObject? ReadUObject() => ReadObject<UObject>().Value;

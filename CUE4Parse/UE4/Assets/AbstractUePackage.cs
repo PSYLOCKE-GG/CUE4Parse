@@ -39,7 +39,7 @@ public abstract class AbstractUePackage : UObject, IPackage
         (_exportsLazyShim ??= new Lazy<Lazy<UObject>[]>(BuildExportsLazyShim)).Value;
 
     private Lazy<UObject>[] BuildExportsLazyShim() =>
-        Exports.Select(info => new Lazy<UObject>(info.Load)).ToArray();
+        Exports.Select(info => new Lazy<UObject>(info.Load, System.Threading.LazyThreadSafetyMode.PublicationOnly)).ToArray();
 
     public bool IsFullyLoaded { get; protected init; }
     public bool CanDeserialize
@@ -179,7 +179,7 @@ public abstract class ResolvedObject(IPackage package, int exportIndex = -1) : I
         get
         {
             var info = ExportInfo;
-            if (info != null) return new Lazy<UObject>(info.Load);
+            if (info != null) return new Lazy<UObject>(info.Load, System.Threading.LazyThreadSafetyMode.PublicationOnly);
             var direct = GetDirectObject();
             return direct != null ? new Lazy<UObject>(() => direct) : null;
         }

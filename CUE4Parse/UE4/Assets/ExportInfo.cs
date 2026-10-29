@@ -34,7 +34,7 @@ public sealed class ExportInfo
         Package = package;
         Index = index;
         Name = name;
-        _sparseLazy = new Lazy<UObject>(createSparse);
+        _sparseLazy = new Lazy<UObject>(createSparse, System.Threading.LazyThreadSafetyMode.PublicationOnly);
         _loadLazy = new Lazy<UObject>(() =>
         {
             var sparse = _sparseLazy.Value;
