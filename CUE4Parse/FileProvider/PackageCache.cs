@@ -97,6 +97,27 @@ public class PackageCache
         return RegisterOrGet(key, package, bytes);
     }
 
+    /// <summary>
+    /// Keeps a package that another store weighs. The first instance for the key stays for the life of this store;
+    /// it adds no bytes here, so it never evicts.
+    /// </summary>
+    public IPackage GetOrKeep(GameFile file, EPackageReadFlags readFlags, Func<GameFile, IPackage> loader)
+    {
+        var key = new Key(file, readFlags);
+        if (TryGetResident(key, out var resident)) return resident;
+        Interlocked.Increment(ref _misses);
+        return RegisterOrGet(key, loader(file), 0);
+    }
+
+    /// <inheritdoc cref="GetOrKeep"/>
+    public async Task<IPackage> GetOrKeepAsync(GameFile file, EPackageReadFlags readFlags, Func<GameFile, Task<IPackage>> loader)
+    {
+        var key = new Key(file, readFlags);
+        if (TryGetResident(key, out var resident)) return resident;
+        Interlocked.Increment(ref _misses);
+        return RegisterOrGet(key, await loader(file).ConfigureAwait(false), 0);
+    }
+
     public void Clear()
     {
         lock (_lock)

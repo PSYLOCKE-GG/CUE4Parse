@@ -24,7 +24,10 @@ public sealed class PackageOwner : IDisposable
     /// <summary>The lifetime this owner stands for, for diagnostics.</summary>
     public string Name { get; }
 
-    /// <summary>The packages this owner keeps resident. The shared owner bounds it; other owners keep every package.</summary>
+    /// <summary>
+    /// The packages this owner keeps resident. The shared owner bounds it; other owners keep every package,
+    /// including each shared package they resolved, so its instance does not change under them.
+    /// </summary>
     public PackageCache Store { get; }
 
     /// <summary>Whether this is the provider's long-lived shared owner.</summary>

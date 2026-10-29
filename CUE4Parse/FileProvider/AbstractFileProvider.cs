@@ -699,8 +699,11 @@ namespace CUE4Parse.FileProvider
 
         public virtual IPackage LoadPackage(GameFile file, EPackageReadFlags readFlags)
         {
+            var current = CurrentOwner;
             var owner = OwnerFor(file);
-            return owner.Store.GetOrLoad(file, readFlags, f => LoadPackageInner(f, readFlags, owner));
+            IPackage Load(GameFile f) => owner.Store.GetOrLoad(f, readFlags, g => LoadPackageInner(g, readFlags, owner));
+            // The shared store may evict and reload; the importing owner keeps the instance it first got.
+            return owner == current ? Load(file) : current.Store.GetOrKeep(file, readFlags, Load);
         }
 
         private static IPackage Tag(IPackage package, GameFile file, PackageOwner owner)
@@ -815,8 +818,11 @@ namespace CUE4Parse.FileProvider
         // its cancellation, and a canceled load is never cached (a retry starts fresh).
         public virtual Task<IPackage> LoadPackageAsync(GameFile file, EPackageReadFlags readFlags, CancellationToken cancellationToken)
         {
+            var current = CurrentOwner;
             var owner = OwnerFor(file);
-            return owner.Store.GetOrLoadAsync(file, readFlags, f => LoadPackageInnerAsync(f, readFlags, owner, cancellationToken));
+            Task<IPackage> Load(GameFile f) => owner.Store.GetOrLoadAsync(f, readFlags, g => LoadPackageInnerAsync(g, readFlags, owner, cancellationToken));
+            // The shared store may evict and reload; the importing owner keeps the instance it first got.
+            return owner == current ? Load(file) : current.Store.GetOrKeepAsync(file, readFlags, Load);
         }
 
         // Readers are created across awaits, so their buffers are outside the measured parse. A package keeps
