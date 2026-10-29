@@ -62,7 +62,7 @@ namespace CUE4Parse.FileProvider
 
         /// <summary>
         /// Resident-package reuse for <see cref="LoadPackage(GameFile)"/> and its async twins.
-        /// Off by default; see <see cref="FileProvider.PackageCache"/>.
+        /// Bounded by its <see cref="PackageCache.MaxBytes"/>; see <see cref="FileProvider.PackageCache"/>.
         /// </summary>
         public PackageCache PackageCache => SharedOwner.Store;
 
@@ -75,7 +75,7 @@ namespace CUE4Parse.FileProvider
         public PackageOwner CurrentOwner => _currentOwner.Value ?? SharedOwner;
 
         /// <summary>Creates a lifetime of packages. Every package it loads is unreachable once the owner is dropped.</summary>
-        public PackageOwner CreateOwner(string name) => new(name, new PackageCache { Enabled = true, MaxBytes = long.MaxValue }, isShared: false);
+        public PackageOwner CreateOwner(string name) => new(name, new PackageCache { MaxBytes = long.MaxValue }, isShared: false);
 
         /// <summary>
         /// Makes <paramref name="owner"/> the owner of entry loads on this async flow until the scope is disposed.
@@ -118,8 +118,6 @@ namespace CUE4Parse.FileProvider
                     return SharedOwner;
             return current;
         }
-
-        private static bool Retains(PackageOwner owner) => owner.Store.Enabled;
 
         /// <summary>
         /// When LoadPackageAsync opens a pak or io-store entry whose uncompressed size is at or below
@@ -702,9 +700,7 @@ namespace CUE4Parse.FileProvider
         public virtual IPackage LoadPackage(GameFile file, EPackageReadFlags readFlags)
         {
             var owner = OwnerFor(file);
-            return Retains(owner)
-                ? owner.Store.GetOrLoad(file, readFlags, f => LoadPackageInner(f, readFlags, owner))
-                : LoadPackageInner(file, readFlags, owner);
+            return owner.Store.GetOrLoad(file, readFlags, f => LoadPackageInner(f, readFlags, owner));
         }
 
         private static IPackage Tag(IPackage package, GameFile file, PackageOwner owner)
@@ -820,13 +816,8 @@ namespace CUE4Parse.FileProvider
         public virtual Task<IPackage> LoadPackageAsync(GameFile file, EPackageReadFlags readFlags, CancellationToken cancellationToken)
         {
             var owner = OwnerFor(file);
-            return Retains(owner)
-                ? owner.Store.GetOrLoadAsync(file, readFlags, f => LoadPackageInnerAsync(f, readFlags, owner, cancellationToken))
-                : LoadPackageUnweighedAsync(file, readFlags, owner, cancellationToken);
+            return owner.Store.GetOrLoadAsync(file, readFlags, f => LoadPackageInnerAsync(f, readFlags, owner, cancellationToken));
         }
-
-        private async Task<IPackage> LoadPackageUnweighedAsync(GameFile file, EPackageReadFlags readFlags, PackageOwner owner, CancellationToken cancellationToken)
-            => (await LoadPackageInnerAsync(file, readFlags, owner, cancellationToken).ConfigureAwait(false)).Package;
 
         // Readers are created across awaits, so their buffers are outside the measured parse. A package keeps
         // its pre-buffered archive for the lifetime of its lazy exports, so that buffer weighs on the package too.

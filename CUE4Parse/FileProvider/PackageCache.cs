@@ -10,7 +10,7 @@ namespace CUE4Parse.FileProvider;
 /// shared by thousands of packages (compression settings, skeletons, ...) are re-read forever.
 /// </summary>
 /// <remarks>
-/// Disabled by default. When enabled, residency is bounded by <see cref="MaxBytes"/> with LRU
+/// Residency is bounded by <see cref="MaxBytes"/> with LRU
 /// eviction. A package weighs the live managed bytes it keeps: the bytes its parse allocated, plus
 /// the bytes each export deserialization allocates (<see cref="Grow"/>). Nested package loads and
 /// export loads weigh their own residents, so a dependency is not counted twice. Ubulk payload reads
@@ -23,9 +23,6 @@ namespace CUE4Parse.FileProvider;
 /// </remarks>
 public class PackageCache
 {
-    /// <summary>Turns residency on. Off, every load constructs a fresh package (historical behavior).</summary>
-    public bool Enabled { get; set; }
-
     /// <summary>Residency ceiling in parse-allocated managed bytes. A package that alone exceeds it is returned but not kept.</summary>
     public long MaxBytes { get; set; } = 1L << 30;
 

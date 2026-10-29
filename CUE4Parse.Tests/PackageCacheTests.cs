@@ -51,7 +51,7 @@ public class PackageCacheTests
     [Fact]
     public void ReturnsResidentInstanceOnSecondLoad()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var file = new FakeGameFile("Game/A.uasset");
         var loads = 0;
 
@@ -67,7 +67,7 @@ public class PackageCacheTests
     [Fact]
     public void ConcurrentLoadsOfSamePathConvergeOnResidentInstance()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var file = new FakeGameFile("Game/A.uasset");
         var loads = 0;
         using var gate = new ManualResetEventSlim();
@@ -96,7 +96,7 @@ public class PackageCacheTests
     [Fact]
     public async Task ConcurrentCrossDependentLoadsDoNotDeadlock()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var a = new FakeGameFile("Game/A.uasset");
         var b = new FakeGameFile("Game/B.uasset");
         using var bothStarted = new CountdownEvent(2);
@@ -131,7 +131,7 @@ public class PackageCacheTests
     [Fact]
     public async Task SynchronousDependencyDoesNotWaitOnCrossedAsyncLoad()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var a = new FakeGameFile("Game/A.uasset");
         var b = new FakeGameFile("Game/B.uasset");
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -158,7 +158,7 @@ public class PackageCacheTests
     [Fact]
     public void DistinctFilesWithSamePathAreDistinctEntries()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var a = cache.GetOrLoad(new FakeGameFile("Game/A.uasset"), EPackageReadFlags.None, _ => new FakePackage());
         var b = cache.GetOrLoad(new FakeGameFile("Game/A.uasset"), EPackageReadFlags.None, _ => new FakePackage());
         Assert.NotSame(a, b);
@@ -168,7 +168,7 @@ public class PackageCacheTests
     public void EvictsLeastRecentlyUsedBeyondMaxBytes()
     {
         const long MaxBytes = 1 << 20;
-        var cache = new PackageCache { Enabled = true, MaxBytes = MaxBytes };
+        var cache = new PackageCache { MaxBytes = MaxBytes };
         var a = new FakeGameFile("Game/A.uasset");
         var b = new FakeGameFile("Game/B.uasset");
 
@@ -194,7 +194,7 @@ public class PackageCacheTests
     [Fact]
     public void FailedLoadIsNotCachedAndRetries()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var file = new FakeGameFile("Game/A.uasset");
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -207,7 +207,7 @@ public class PackageCacheTests
     [Fact]
     public async Task AsyncAndSyncLoadsShareResidency()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var file = new FakeGameFile("Game/A.uasset");
 
         var fromAsync = await cache.GetOrLoadAsync(file, EPackageReadFlags.None, _ => Task.FromResult(((IPackage) new FakePackage(), 0L)));
@@ -219,7 +219,7 @@ public class PackageCacheTests
     [Fact]
     public void ClearDropsResidencyWithoutCountingEvictions()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var file = new FakeGameFile("Game/A.uasset");
         var first = cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
         cache.Clear();
@@ -232,7 +232,7 @@ public class PackageCacheTests
     [Fact]
     public void RemoveDropsOnlyRequestedResidency()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var a = new FakeGameFile("Game/A.uasset");
         var b = new FakeGameFile("Game/B.uasset");
         var firstA = cache.GetOrLoad(a, EPackageReadFlags.None, _ => new FakePackage());
@@ -248,7 +248,7 @@ public class PackageCacheTests
     [Fact]
     public void SameFileDifferentReadFlagsAreDistinctEntries()
     {
-        var cache = new PackageCache { Enabled = true };
+        var cache = new PackageCache();
         var file = new FakeGameFile("Game/A.uasset");
 
         var full = cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
