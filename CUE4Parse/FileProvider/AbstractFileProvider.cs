@@ -74,8 +74,16 @@ namespace CUE4Parse.FileProvider
         /// <summary>The owner that entry loads on this async flow go into; the shared owner outside any <see cref="EnterOwner"/>.</summary>
         public PackageOwner CurrentOwner => _currentOwner.Value ?? SharedOwner;
 
-        /// <summary>Creates a lifetime of packages. Every package it loads is unreachable once the owner is dropped.</summary>
-        public PackageOwner CreateOwner(string name) => new(name, new PackageCache { MaxBytes = long.MaxValue }, isShared: false);
+        /// <summary>
+        /// Creates a lifetime of packages. Every package it loads is unreachable once the owner is dropped.
+        /// The owner nests inside <paramref name="parent"/>, by default the current owner of this async flow;
+        /// a new owner made outside any owner is a root.
+        /// </summary>
+        public PackageOwner CreateOwner(string name, PackageOwner? parent = null)
+        {
+            parent ??= CurrentOwner;
+            return new(name, new PackageCache { MaxBytes = long.MaxValue }, isShared: false, parent.IsShared ? null : parent);
+        }
 
         /// <summary>
         /// Makes <paramref name="owner"/> the owner of entry loads on this async flow until the scope is disposed.
@@ -702,9 +710,23 @@ namespace CUE4Parse.FileProvider
         {
             var current = CurrentOwner;
             var owner = OwnerFor(file);
+            if (FindInLineage(current, file, readFlags) is { } found) return found;
             IPackage Load(GameFile f) => owner.Store.GetOrLoad(f, readFlags, g => LoadPackageInner(g, readFlags, owner));
             // The shared store may evict and reload; the importing owner keeps the instance it first got.
             return owner == current ? Load(file) : current.Store.GetOrKeep(file, readFlags, Load);
+        }
+
+        /// <summary>
+        /// The package a nested owner already sees: resident in the owner or an ancestor. A package there
+        /// belongs to that lineage or to the shared owner; anything else breaks the edge rule and throws.
+        /// </summary>
+        private static IPackage? FindInLineage(PackageOwner current, GameFile file, EPackageReadFlags readFlags)
+        {
+            if (current.IsShared || current.Parent is null) return null;
+            if (!current.TryFind(file, readFlags, out var package)) return null;
+            if (package is AbstractUePackage { Owner: { } owner } && !current.Reaches(owner))
+                throw new InvalidOperationException($"package {file.Path} belongs to owner '{owner}', which owner '{current}' cannot reach");
+            return package;
         }
 
         private static IPackage Tag(IPackage package, GameFile file, PackageOwner owner)
@@ -821,6 +843,7 @@ namespace CUE4Parse.FileProvider
         {
             var current = CurrentOwner;
             var owner = OwnerFor(file);
+            if (FindInLineage(current, file, readFlags) is { } found) return Task.FromResult(found);
             Task<IPackage> Load(GameFile f) => owner.Store.GetOrLoadAsync(f, readFlags, g => LoadPackageInnerAsync(g, readFlags, owner, cancellationToken));
             // The shared store may evict and reload; the importing owner keeps the instance it first got.
             return owner == current ? Load(file) : current.Store.GetOrKeepAsync(file, readFlags, Load);

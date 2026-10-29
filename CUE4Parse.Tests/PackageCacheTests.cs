@@ -270,4 +270,58 @@ public class PackageCacheTests
         var thrown = Assert.Throws<ObjectDisposedException>(() => provider.LoadPackage(new FakeGameFile("Game/A.uasset")));
         Assert.Contains("hero", thrown.Message);
     }
+
+    [Fact]
+    public void ChildResolvesParentPackageWithoutReparsing()
+    {
+        var provider = new DummyFileProvider();
+        var file = new FakeGameFile("Game/A.uasset");
+        using var hero = provider.CreateOwner("hero");
+        var parsed = hero.Store.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
+
+        using var _ = provider.EnterOwner(hero);
+        using var scene = provider.CreateOwner("scene");
+        using var __ = provider.EnterOwner(scene);
+
+        Assert.Same(hero, scene.Parent);
+        Assert.Same(parsed, provider.LoadPackage(file));
+        Assert.Equal(0, scene.Store.ResidentCount);
+    }
+
+    [Fact]
+    public void ChildPackageStaysInChildAndGoesWithIt()
+    {
+        var provider = new DummyFileProvider();
+        var file = new FakeGameFile("Game/A.uasset");
+        using var hero = provider.CreateOwner("hero");
+        var scene = provider.CreateOwner("scene", hero);
+        var parsed = scene.Store.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
+
+        using (provider.EnterOwner(scene))
+            Assert.Same(parsed, provider.LoadPackage(file));
+        Assert.False(hero.TryFind(file, EPackageReadFlags.None, out _));
+
+        scene.Dispose();
+        Assert.False(scene.TryFind(file, EPackageReadFlags.None, out _));
+        Assert.False(hero.IsDropped);
+        using var dropped = provider.EnterOwner(scene);
+        Assert.Throws<ObjectDisposedException>(() => provider.LoadPackage(file));
+    }
+
+    [Fact]
+    public void SiblingCannotReachChildPackage()
+    {
+        var provider = new DummyFileProvider();
+        var file = new FakeGameFile("Game/A.uasset");
+        using var hero = provider.CreateOwner("hero");
+        using var scene = provider.CreateOwner("scene", hero);
+        using var sibling = provider.CreateOwner("sibling", hero);
+        scene.Store.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage());
+
+        Assert.False(sibling.TryFind(file, EPackageReadFlags.None, out _));
+        Assert.False(sibling.Reaches(scene));
+        Assert.True(scene.Reaches(hero));
+        Assert.True(scene.Reaches(provider.SharedOwner));
+        Assert.False(hero.Reaches(scene));
+    }
 }

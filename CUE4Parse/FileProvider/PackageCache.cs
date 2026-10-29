@@ -143,6 +143,10 @@ public class PackageCache
         }
     }
 
+    /// <summary>Finds a resident package without loading it. A hit counts; a miss does not.</summary>
+    public bool TryGet(GameFile file, EPackageReadFlags readFlags, out IPackage package)
+        => TryGetResident(new Key(file, readFlags), out package);
+
     private bool TryGetResident(Key key, out IPackage package)
     {
         lock (_lock)
