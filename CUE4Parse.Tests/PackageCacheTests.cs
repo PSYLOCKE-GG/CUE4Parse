@@ -258,4 +258,16 @@ public class PackageCacheTests
         Assert.Same(full, cache.GetOrLoad(file, EPackageReadFlags.None, _ => new FakePackage()));
         Assert.Same(meta, cache.GetOrLoad(file, EPackageReadFlags.AnimMetadataOnly, _ => new FakePackage()));
     }
+
+    [Fact]
+    public void LoadIntoDroppedOwnerThrows()
+    {
+        var provider = new DummyFileProvider();
+        var owner = provider.CreateOwner("hero");
+        owner.Dispose();
+        using var _ = provider.EnterOwner(owner);
+
+        var thrown = Assert.Throws<ObjectDisposedException>(() => provider.LoadPackage(new FakeGameFile("Game/A.uasset")));
+        Assert.Contains("hero", thrown.Message);
+    }
 }

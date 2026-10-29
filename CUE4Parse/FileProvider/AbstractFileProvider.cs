@@ -112,6 +112,7 @@ namespace CUE4Parse.FileProvider
         private PackageOwner OwnerFor(GameFile file)
         {
             var current = CurrentOwner;
+            current.ThrowIfDropped();
             if (current.IsShared) return current;
             foreach (var prefix in SharedPackagePrefixes)
                 if (file.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))

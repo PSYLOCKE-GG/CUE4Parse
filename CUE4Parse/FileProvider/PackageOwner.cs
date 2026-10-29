@@ -33,10 +33,24 @@ public sealed class PackageOwner : IDisposable
     /// <summary>Whether this is the provider's long-lived shared owner.</summary>
     public bool IsShared { get; }
 
-    /// <summary>Releases the packages of this owner. The shared owner is never released.</summary>
+    /// <summary>Whether this owner was dropped. A dropped owner refuses every load.</summary>
+    public bool IsDropped { get; private set; }
+
+    /// <summary>
+    /// Releases the packages of this owner and refuses later loads into it. A package that still
+    /// resolves an import through a dropped owner outlived its lifetime, so the load throws.
+    /// The shared owner is never released.
+    /// </summary>
     public void Dispose()
     {
-        if (!IsShared) Store.Clear();
+        if (IsShared) return;
+        IsDropped = true;
+        Store.Clear();
+    }
+
+    internal void ThrowIfDropped()
+    {
+        if (IsDropped) throw new ObjectDisposedException($"package owner '{Name}'");
     }
 
     public override string ToString() => Name;
