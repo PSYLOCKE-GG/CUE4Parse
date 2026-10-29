@@ -2,6 +2,7 @@ using CUE4Parse.GameTypes.FF7.Assets.Objects;
 using CUE4Parse.GameTypes.Tencent.GangstarMirageCity.Objects.Meshes;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.Meshes;
@@ -19,15 +20,90 @@ public class FStaticMeshLODResources
     public FCardRepresentationData? CardRepresentationData { get; set; }
     public float MaxDeviation { get; protected set; }
     public int NumVertices { get; set; }
-    public FPositionVertexBuffer? PositionVertexBuffer { get; set; }
-    public FStaticMeshVertexBuffer? VertexBuffer { get; private set; }
-    public FColorVertexBuffer? ColorVertexBuffer { get; set; }
-    public FRawStaticIndexBuffer? IndexBuffer { get; private set; }
-    public FRawStaticIndexBuffer? ReversedIndexBuffer { get; private set; }
-    public FRawStaticIndexBuffer? DepthOnlyIndexBuffer { get; private set; }
-    public FRawStaticIndexBuffer? ReversedDepthOnlyIndexBuffer { get; private set; }
-    public FRawStaticIndexBuffer? WireframeIndexBuffer { get; private set; }
-    public FRawStaticIndexBuffer? AdjacencyIndexBuffer { get; private set; }
+    // The render buffers below come from SerializeBuffers. A cooked LOD whose buffers sit in a
+    // bulk payload reads them on the first get of any of them.
+    private Lazy<bool>? _buffers;
+
+    /// <summary>True when the render buffers are in memory: read eagerly, or read on a first get.</summary>
+    public bool IsRenderDataLoaded => _buffers is null || _buffers.IsValueCreated;
+
+    private FPositionVertexBuffer? _positionVertexBuffer;
+    public FPositionVertexBuffer? PositionVertexBuffer
+    {
+        get { LoadBuffers(); return _positionVertexBuffer; }
+        set { LoadBuffers(); _positionVertexBuffer = value; }
+    }
+
+    private FStaticMeshVertexBuffer? _vertexBuffer;
+    public FStaticMeshVertexBuffer? VertexBuffer
+    {
+        get { LoadBuffers(); return _vertexBuffer; }
+        private set { LoadBuffers(); _vertexBuffer = value; }
+    }
+
+    private FColorVertexBuffer? _colorVertexBuffer;
+    public FColorVertexBuffer? ColorVertexBuffer
+    {
+        get { LoadBuffers(); return _colorVertexBuffer; }
+        set { LoadBuffers(); _colorVertexBuffer = value; }
+    }
+
+    private FRawStaticIndexBuffer? _indexBuffer;
+    public FRawStaticIndexBuffer? IndexBuffer
+    {
+        get { LoadBuffers(); return _indexBuffer; }
+        private set { LoadBuffers(); _indexBuffer = value; }
+    }
+
+    private FRawStaticIndexBuffer? _reversedIndexBuffer;
+    public FRawStaticIndexBuffer? ReversedIndexBuffer
+    {
+        get { LoadBuffers(); return _reversedIndexBuffer; }
+        private set { LoadBuffers(); _reversedIndexBuffer = value; }
+    }
+
+    private FRawStaticIndexBuffer? _depthOnlyIndexBuffer;
+    public FRawStaticIndexBuffer? DepthOnlyIndexBuffer
+    {
+        get { LoadBuffers(); return _depthOnlyIndexBuffer; }
+        private set { LoadBuffers(); _depthOnlyIndexBuffer = value; }
+    }
+
+    private FRawStaticIndexBuffer? _reversedDepthOnlyIndexBuffer;
+    public FRawStaticIndexBuffer? ReversedDepthOnlyIndexBuffer
+    {
+        get { LoadBuffers(); return _reversedDepthOnlyIndexBuffer; }
+        private set { LoadBuffers(); _reversedDepthOnlyIndexBuffer = value; }
+    }
+
+    private FRawStaticIndexBuffer? _wireframeIndexBuffer;
+    public FRawStaticIndexBuffer? WireframeIndexBuffer
+    {
+        get { LoadBuffers(); return _wireframeIndexBuffer; }
+        private set { LoadBuffers(); _wireframeIndexBuffer = value; }
+    }
+
+    private FRawStaticIndexBuffer? _adjacencyIndexBuffer;
+    public FRawStaticIndexBuffer? AdjacencyIndexBuffer
+    {
+        get { LoadBuffers(); return _adjacencyIndexBuffer; }
+        private set { LoadBuffers(); _adjacencyIndexBuffer = value; }
+    }
+
+    private void LoadBuffers() => _ = _buffers?.Value;
+
+    private void DeferBuffers(FByteBulkData bulk, VersionContainer versions)
+    {
+        _buffers = new Lazy<bool>(() =>
+        {
+            var data = bulk.ReadDataOnce(returnCachedData: false)
+                ?? throw new ParserException($"Static mesh LOD bulk data of {bulk.Header.SizeOnDisk} bytes could not be read");
+            using var ar = new FByteArchive("StaticMeshBufferReader", data, versions);
+            SerializeBuffers(ar);
+            return true;
+        }, LazyThreadSafetyMode.ExecutionAndPublication);
+    }
+
     public bool SkipLod => VertexBuffer == null || IndexBuffer?.Buffer == null || PositionVertexBuffer == null;
 
     public enum EClassDataStripFlag : byte
@@ -128,10 +204,18 @@ public class FStaticMeshLODResources
             else if (Ar is FAssetArchive assetArchive)
             {
                 var bulkData = new FByteBulkData(assetArchive);
-                if (bulkData.Header.ElementCount > 0 && bulkData.Data != null)
+                if (bulkData.Header.ElementCount > 0 && bulkData.IsAvailable())
                 {
-                    using var tempAr = new FByteArchive("StaticMeshBufferReader", bulkData.Data, Ar.Versions);
-                    SerializeBuffers(tempAr);
+                    if (Ar.Game is GAME_FinalFantasy7Rebirth)
+                    {
+                        // FF7 rewrites section triangle counts while it reads the buffers: eager.
+                        using var tempAr = new FByteArchive("StaticMeshBufferReader", bulkData.Data!, Ar.Versions);
+                        SerializeBuffers(tempAr);
+                    }
+                    else
+                    {
+                        DeferBuffers(bulkData, Ar.Versions);
+                    }
                 }
 
                 if (Ar.Game is GAME_HonorofKingsWorld)
@@ -315,9 +399,9 @@ public class FStaticMeshLODResources
     {
         var stripDataFlags = new FStripDataFlags(Ar);
 
-        PositionVertexBuffer = Ar.Game is GAME_GangstarMirageCity ? new FGangstarPositionVertexBuffer(Ar) : new FPositionVertexBuffer(Ar);
-        VertexBuffer = new FStaticMeshVertexBuffer(Ar);
-        ColorVertexBuffer = new FColorVertexBuffer(Ar);
+        _positionVertexBuffer = Ar.Game is GAME_GangstarMirageCity ? new FGangstarPositionVertexBuffer(Ar) : new FPositionVertexBuffer(Ar);
+        _vertexBuffer = new FStaticMeshVertexBuffer(Ar);
+        _colorVertexBuffer = new FColorVertexBuffer(Ar);
 
         if (Ar.Game is GAME_RogueCompany)
         {
@@ -325,28 +409,28 @@ public class FStaticMeshLODResources
         }
         if (Ar.Game == GAME_ThePathless) Ar.Position += 20;
 
-        IndexBuffer = new FRawStaticIndexBuffer(Ar);
+        _indexBuffer = new FRawStaticIndexBuffer(Ar);
 
         if (!stripDataFlags.IsClassDataStripped((byte) EClassDataStripFlag.CDSF_ReversedIndexBuffer))
         {
-            ReversedIndexBuffer = new FRawStaticIndexBuffer(Ar);
+            _reversedIndexBuffer = new FRawStaticIndexBuffer(Ar);
         }
 
         if (Ar.Game is GAME_OutlastTrials) Ar.Position += 4;
 
-        DepthOnlyIndexBuffer = new FRawStaticIndexBuffer(Ar);
+        _depthOnlyIndexBuffer = new FRawStaticIndexBuffer(Ar);
 
         if (!stripDataFlags.IsClassDataStripped((byte) EClassDataStripFlag.CDSF_ReversedIndexBuffer))
-            ReversedDepthOnlyIndexBuffer = new FRawStaticIndexBuffer(Ar);
+            _reversedDepthOnlyIndexBuffer = new FRawStaticIndexBuffer(Ar);
 
         if (!stripDataFlags.IsEditorDataStripped())
-            WireframeIndexBuffer = new FRawStaticIndexBuffer(Ar);
+            _wireframeIndexBuffer = new FRawStaticIndexBuffer(Ar);
 
         if (FUE5ReleaseStreamObjectVersion.Get(Ar) < FUE5ReleaseStreamObjectVersion.Type.RemovingTessellation &&
             !stripDataFlags.IsClassDataStripped((byte) EClassDataStripFlag.CDSF_AdjacencyData))
         {
             if (Ar.Game != GAME_GTATheTrilogyDefinitiveEdition && Ar.Game != GAME_FinalFantasy7Rebirth)
-                AdjacencyIndexBuffer = new FRawStaticIndexBuffer(Ar);
+                _adjacencyIndexBuffer = new FRawStaticIndexBuffer(Ar);
         }
 
         if (Ar.Game == GAME_OutlastTrials) Ar.Position += 4;
@@ -375,7 +459,7 @@ public class FStaticMeshLODResources
                 {
                     Sections[i].NumTriangles = sections[i];
                 }
-                IndexBuffer.SetIndices(indexBuffer);
+                _indexBuffer.SetIndices(indexBuffer);
             }
         }
 

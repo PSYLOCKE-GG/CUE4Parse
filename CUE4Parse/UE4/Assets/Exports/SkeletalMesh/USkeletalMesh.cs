@@ -19,18 +19,7 @@ public partial class USkeletalMesh : USkinnedAsset
 {
     public FBoxSphereBounds ImportedBounds { get; private set; }
 
-    private FStaticLODModel[]? _lodModels;
-    public override FStaticLODModel[]? LODModels
-    {
-        get => IsLODDataStripped
-            ? throw new InvalidOperationException(
-                $"LOD render data of '{Name}' was not deserialized: its package was loaded with EPackageReadFlags.MeshMetadataOnly. Reload the package without the flag for geometry.")
-            : _lodModels;
-        protected set => _lodModels = value;
-    }
-
-    /// <summary>True when MeshMetadataOnly skipped this mesh's LOD render data.</summary>
-    public bool IsLODDataStripped { get; private set; }
+    public override FStaticLODModel[]? LODModels { get; protected set; }
     public byte NumVertexColorChannels { get; private set; }
     public bool bEnablePerPolyCollision { get; private set; }
 
@@ -99,14 +88,6 @@ public partial class USkeletalMesh : USkinnedAsset
         if (Ar.Game < GAME_UE4_0)
         {
             Ar.Position += sizeof(int); // int - SkeletalDepth
-        }
-
-        // Everything from here on is LOD render data plus fix-ups that only exist to
-        // patch it; a partial skip inside the LOD block would desync the archive.
-        if (Ar.Owner?.ReadFlags.HasFlag(EPackageReadFlags.MeshMetadataOnly) == true)
-        {
-            IsLODDataStripped = true;
-            return;
         }
 
         if (FSkeletalMeshCustomVersion.Get(Ar) < FSkeletalMeshCustomVersion.Type.SplitModelAndRenderData)
@@ -445,7 +426,7 @@ public partial class USkeletalMesh : USkinnedAsset
         serializer.Serialize(writer, SkeletalMaterials);
 
         writer.WritePropertyName(nameof(LODModels));
-        serializer.Serialize(writer, _lodModels);
+        serializer.Serialize(writer, LODModels);
 
         writer.WritePropertyName(nameof(NaniteResources));
         serializer.Serialize(writer, NaniteResources);

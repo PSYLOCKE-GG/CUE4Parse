@@ -25,26 +25,129 @@ public enum EClassDataStripFlag : byte
 public class FStaticLODModel
 {
     public FSkelMeshSection[] Sections = [];
-    public FMultisizeIndexContainer? Indices;
     public short[] ActiveBoneIndices;
     public FSkelMeshChunk[] Chunks;
     public int Size;
-    public int NumVertices;
     public short[] RequiredBones;
     public FIntBulkData RawPointIndices;
     public int[] MeshToImportVertexMap;
     public int MaxImportVertex;
-    public int NumTexCoords;
-    public FMorphTargetVertexInfoBuffers? MorphTargetVertexInfoBuffers;
-    public Dictionary<FName, FSkeletalMeshAttributeVertexBuffer>? VertexAttributeBuffers;
-    public FSkeletalMeshVertexBuffer VertexBufferGPUSkin;
-    public FSkeletalMeshVertexColorBuffer ColorVertexBuffer;
-    public FMultisizeIndexContainer AdjacencyIndexBuffer;
-    public FSkeletalMeshVertexClothBuffer ClothVertexBuffer;
-    public FSkeletalMeshHalfEdgeBuffer HalfEdgeBuffer;
+
+    // The render buffers below come from the streamed LOD data. A cooked LOD reads that data
+    // on the first get of any of them, from the package archive or the LOD's bulk payload.
+    private Lazy<bool>? _streamedData;
+
+    /// <summary>True when the render buffers are in memory: read eagerly, or read on a first get.</summary>
+    public bool IsRenderDataLoaded => _streamedData is null || _streamedData.IsValueCreated;
+
+    private FMultisizeIndexContainer? _indices;
+    public FMultisizeIndexContainer? Indices
+    {
+        get { LoadStreamedData(); return _indices; }
+        set { LoadStreamedData(); _indices = value; }
+    }
+
+    private int _numVertices;
+    public int NumVertices
+    {
+        get { LoadStreamedData(); return _numVertices; }
+        set { LoadStreamedData(); _numVertices = value; }
+    }
+
+    private int _numTexCoords;
+    public int NumTexCoords
+    {
+        get { LoadStreamedData(); return _numTexCoords; }
+        set { LoadStreamedData(); _numTexCoords = value; }
+    }
+
+    private FMorphTargetVertexInfoBuffers? _morphTargetVertexInfoBuffers;
+    public FMorphTargetVertexInfoBuffers? MorphTargetVertexInfoBuffers
+    {
+        get { LoadStreamedData(); return _morphTargetVertexInfoBuffers; }
+        set { LoadStreamedData(); _morphTargetVertexInfoBuffers = value; }
+    }
+
+    private Dictionary<FName, FSkeletalMeshAttributeVertexBuffer>? _vertexAttributeBuffers;
+    public Dictionary<FName, FSkeletalMeshAttributeVertexBuffer>? VertexAttributeBuffers
+    {
+        get { LoadStreamedData(); return _vertexAttributeBuffers; }
+        set { LoadStreamedData(); _vertexAttributeBuffers = value; }
+    }
+
+    private FSkeletalMeshVertexBuffer _vertexBufferGPUSkin = default!;
+    public FSkeletalMeshVertexBuffer VertexBufferGPUSkin
+    {
+        get { LoadStreamedData(); return _vertexBufferGPUSkin; }
+        set { LoadStreamedData(); _vertexBufferGPUSkin = value; }
+    }
+
+    private FSkeletalMeshVertexColorBuffer _colorVertexBuffer = default!;
+    public FSkeletalMeshVertexColorBuffer ColorVertexBuffer
+    {
+        get { LoadStreamedData(); return _colorVertexBuffer; }
+        set { LoadStreamedData(); _colorVertexBuffer = value; }
+    }
+
+    private FMultisizeIndexContainer _adjacencyIndexBuffer = default!;
+    public FMultisizeIndexContainer AdjacencyIndexBuffer
+    {
+        get { LoadStreamedData(); return _adjacencyIndexBuffer; }
+        set { LoadStreamedData(); _adjacencyIndexBuffer = value; }
+    }
+
+    private FSkeletalMeshVertexClothBuffer _clothVertexBuffer = default!;
+    public FSkeletalMeshVertexClothBuffer ClothVertexBuffer
+    {
+        get { LoadStreamedData(); return _clothVertexBuffer; }
+        set { LoadStreamedData(); _clothVertexBuffer = value; }
+    }
+
+    private FSkeletalMeshHalfEdgeBuffer _halfEdgeBuffer = default!;
+    public FSkeletalMeshHalfEdgeBuffer HalfEdgeBuffer
+    {
+        get { LoadStreamedData(); return _halfEdgeBuffer; }
+        set { LoadStreamedData(); _halfEdgeBuffer = value; }
+    }
+
+    private object? _additionalBuffer;
+    public object? AdditionalBuffer
+    {
+        get { LoadStreamedData(); return _additionalBuffer; }
+        set { LoadStreamedData(); _additionalBuffer = value; }
+    }
+
     public bool SkipLod => Indices?.Buffer == null || Indices.Buffer.Length < 1;
-    // Game specific data
-    public object? AdditionalBuffer;
+
+    private void DeferBulkStreamedData(FByteBulkData bulk, VersionContainer versions, bool bHasVertexColors) =>
+        DeferStreamedData(() =>
+        {
+            var data = bulk.ReadDataOnce(returnCachedData: false)
+                ?? throw new ParserException($"Streamed LOD bulk data of {bulk.Header.SizeOnDisk} bytes could not be read");
+            return (new FByteArchive("LodReader", data, versions), data.Length);
+        }, bHasVertexColors);
+
+    private void LoadStreamedData() => _ = _streamedData?.Value;
+
+    /// <summary>
+    /// Defers SerializeStreamedData to the first get of a render buffer. The opened archive
+    /// must read exactly the streamed block; a short or long read fails loudly.
+    /// </summary>
+    private void DeferStreamedData(Func<(FArchive Ar, long Length)> open, bool bHasVertexColors)
+    {
+        _streamedData = new Lazy<bool>(() =>
+        {
+            var (ar, length) = open();
+            using (ar)
+            {
+                var start = ar.Position;
+                SerializeStreamedData(ar, bHasVertexColors);
+                if (ar.Position - start != length)
+                    throw new ParserException(ar, $"Streamed LOD data read {ar.Position - start} bytes, expected {length}");
+            }
+            return true;
+        }, LazyThreadSafetyMode.ExecutionAndPublication);
+    }
 
     public FStaticLODModel()
     {
@@ -444,7 +547,8 @@ public class FStaticLODModel
             if (Ar.Game is GAME_FragPunk)
                 Ar.Read<int>();
 
-            Ar.Position += 4; //var buffersSize = Ar.Read<uint>();
+            // BuffersSize is the serialized length of the inlined streamed block.
+            var buffersSize = Ar.Read<uint>();
 
             if (Ar is { Game: >= GAME_UE5_8, IsFilterEditorOnly: true })
             {
@@ -462,15 +566,20 @@ public class FStaticLODModel
                 // We should be checking if bInlined is true too but if we do we loose high-res LODs on majority of SKs
                 // Removing the check would have been probabilistic if we had serialization issue but since we don't it's fine
 
-                if (bulkData is { Data: not null, Header.ElementCount: > 0 })
-                {
-                    using var tempAr = new FByteArchive("LodReader", bulkData.Data, Ar.Versions);
-                    SerializeStreamedData(tempAr, bHasVertexColors);
-                }
+                if (bulkData.Header.ElementCount > 0)
+                    DeferBulkStreamedData(bulkData, Ar.Versions, bHasVertexColors);
             }
             else if (bInlined)
             {
-                SerializeStreamedData(Ar, bHasVertexColors);
+                var exportAr = Ar;
+                var start = Ar.Position;
+                DeferStreamedData(() =>
+                {
+                    var ar = (FAssetArchive) exportAr.Clone();
+                    ar.Position = start;
+                    return (ar, buffersSize);
+                }, bHasVertexColors);
+                Ar.Position = start + buffersSize;
 
                 if (Ar.Game == GAME_RogueCompany)
                 {
@@ -491,19 +600,16 @@ public class FStaticLODModel
             else
             {
                 var bulk = new FByteBulkData(Ar);
-                var bulkData = bulk.Data;
-                if (bulk.Header.ElementCount > 0 && bulkData != null)
+                if (bulk.Header.ElementCount > 0 && bulk.IsAvailable())
                 {
                     if (Ar.Game is GAME_FinalFantasy7Rebirth)
                     {
-                        FF7FStaticLodModel.ReadFStaticLodModel(Ar, bHasVertexColors, bulkData, out Indices, out VertexBufferGPUSkin, out ColorVertexBuffer, out NumVertices, out NumTexCoords);
+                        // FF7 reads its buffers through game-specific code: eager.
+                        FF7FStaticLodModel.ReadFStaticLodModel(Ar, bHasVertexColors, bulk.Data!, out _indices, out _vertexBufferGPUSkin, out _colorVertexBuffer, out _numVertices, out _numTexCoords);
                         return;
                     }
 
-                    using (var tempAr = new FByteArchive("LodReader", bulkData, Ar.Versions))
-                    {
-                        SerializeStreamedData(tempAr, bHasVertexColors);
-                    }
+                    DeferBulkStreamedData(bulk, Ar.Versions, bHasVertexColors);
 
                     SerializeAvailabilityInfo(Ar, !stripDataFlags.IsClassDataStripped((byte) EClassDataStripFlag.CDSF_AdjacencyData));
                 }
@@ -578,32 +684,32 @@ public class FStaticLODModel
     {
         var stripDataFlags = new FStripDataFlags(Ar);
 
-        Indices = new FMultisizeIndexContainer(Ar);
-        VertexBufferGPUSkin = new FSkeletalMeshVertexBuffer { bUseFullPrecisionUVs = true };
+        _indices = new FMultisizeIndexContainer(Ar);
+        _vertexBufferGPUSkin = new FSkeletalMeshVertexBuffer { bUseFullPrecisionUVs = true };
 
         var positionVertexBuffer = Ar.Game is GAME_GangstarMirageCity ? new FGangstarPositionVertexBuffer(Ar) : new FPositionVertexBuffer(Ar);
         var staticMeshVertexBuffer = new FStaticMeshVertexBuffer(Ar);
-        var skinWeightVertexBuffer = new FSkinWeightVertexBuffer(Ar, VertexBufferGPUSkin.bExtraBoneInfluences);
+        var skinWeightVertexBuffer = new FSkinWeightVertexBuffer(Ar, _vertexBufferGPUSkin.bExtraBoneInfluences);
 
         if (Ar.Game is GAME_EvilWest) Ar.Position += 22;
         if (Ar.Game is GAME_GearsofWarEDay && Ar.Peek<int>() == 0) bHasVertexColors = false;
-        if (Ar.Game is GAME_GangstarMirageCity) AdditionalBuffer = positionVertexBuffer;
+        if (Ar.Game is GAME_GangstarMirageCity) _additionalBuffer = positionVertexBuffer;
 
         if (bHasVertexColors)
         {
             var newColorVertexBuffer = new FColorVertexBuffer(Ar);
-            ColorVertexBuffer = new FSkeletalMeshVertexColorBuffer(newColorVertexBuffer.Data);
+            _colorVertexBuffer = new FSkeletalMeshVertexColorBuffer(newColorVertexBuffer.Data);
         }
 
         if (FUE5ReleaseStreamObjectVersion.Get(Ar) < FUE5ReleaseStreamObjectVersion.Type.RemovingTessellation &&
             !stripDataFlags.IsClassDataStripped((byte) EClassDataStripFlag.CDSF_AdjacencyData))
         {
             if (Ar.Game != GAME_GTATheTrilogyDefinitiveEdition && Ar.Game != GAME_FinalFantasy7Rebirth)
-                AdjacencyIndexBuffer = new FMultisizeIndexContainer(Ar);
+                _adjacencyIndexBuffer = new FMultisizeIndexContainer(Ar);
         }
 
         if (HasClothData())
-            ClothVertexBuffer = new FSkeletalMeshVertexClothBuffer(Ar);
+            _clothVertexBuffer = new FSkeletalMeshVertexClothBuffer(Ar);
 
         if (Ar.Game is GAME_InfinityNikki && Sections.Any(x => x.CustomData.HasValue && x.CustomData.Value > 0))
         {
@@ -640,13 +746,13 @@ public class FStaticLODModel
             bool bSerializeCompressedMorphTargets = Ar.ReadBoolean();
             if (bSerializeCompressedMorphTargets)
             {
-                MorphTargetVertexInfoBuffers = new FMorphTargetVertexInfoBuffers(Ar);
+                _morphTargetVertexInfoBuffers = new FMorphTargetVertexInfoBuffers(Ar);
             }
         }
 
         if (FUE5MainStreamObjectVersion.Get(Ar) >= FUE5MainStreamObjectVersion.Type.SkeletalVertexAttributes)
         {
-            VertexAttributeBuffers = Ar.ReadMap(Ar.ReadFName, () => new FSkeletalMeshAttributeVertexBuffer(Ar));
+            _vertexAttributeBuffers = Ar.ReadMap(Ar.ReadFName, () => new FSkeletalMeshAttributeVertexBuffer(Ar));
         }
 
         if (FFortniteMainBranchObjectVersion.Get(Ar) >= FFortniteMainBranchObjectVersion.Type.SkeletalHalfEdgeData)
@@ -655,20 +761,20 @@ public class FStaticLODModel
             var meshDeformerStripFlags = new FStripDataFlags(Ar);
             if (!meshDeformerStripFlags.IsClassDataStripped(MeshDeformerStripFlag))
             {
-                HalfEdgeBuffer = new FSkeletalMeshHalfEdgeBuffer(Ar);
+                _halfEdgeBuffer = new FSkeletalMeshHalfEdgeBuffer(Ar);
             }
         }
 
-        NumVertices = positionVertexBuffer.NumVertices;
-        NumTexCoords = staticMeshVertexBuffer.NumTexCoords;
+        _numVertices = positionVertexBuffer.NumVertices;
+        _numTexCoords = staticMeshVertexBuffer.NumTexCoords;
 
-        VertexBufferGPUSkin.VertsFloat = new FGPUVertFloat[NumVertices];
-        for (var i = 0; i < VertexBufferGPUSkin.VertsFloat.Length; i++)
+        _vertexBufferGPUSkin.VertsFloat = new FGPUVertFloat[_numVertices];
+        for (var i = 0; i < _vertexBufferGPUSkin.VertsFloat.Length; i++)
         {
-            VertexBufferGPUSkin.VertsFloat[i] = new FGPUVertFloat(positionVertexBuffer.Verts[i], skinWeightVertexBuffer.Weights[i], staticMeshVertexBuffer.UV[i]);
+            _vertexBufferGPUSkin.VertsFloat[i] = new FGPUVertFloat(positionVertexBuffer.Verts[i], skinWeightVertexBuffer.Weights[i], staticMeshVertexBuffer.UV[i]);
         }
 
-        if (Ar.Game == GAME_DeadIsland2) FDeadIsland2SkeletalMesh.ConvertIndices(Indices, Sections);
+        if (Ar.Game == GAME_DeadIsland2) FDeadIsland2SkeletalMesh.ConvertIndices(_indices, Sections);
     }
 
     private void SerializeAvailabilityInfo(FArchive Ar, bool bAdjacencyData)

@@ -182,6 +182,30 @@ public class FixtureRenderableAssetTests
     [Theory]
     [InlineData(FixtureSerialization.Tagged)]
     [InlineData(FixtureSerialization.Unversioned)]
+    public void SkeletalMeshReadsItsRenderBuffersOnFirstAccess(FixtureSerialization serialization)
+    {
+        using var provider = CreateMountedIoStoreProvider(serialization);
+        var mesh = LoadExport<USkeletalMesh>(
+            provider,
+            "CUE4ParseFixtures/Content/Fixtures/Meshes/SK_Fixture.uasset",
+            "SK_Fixture");
+
+        var lods = Assert.IsType<FStaticLODModel[]>(mesh.LODModels);
+        Assert.All(lods, lod => Assert.False(lod.IsRenderDataLoaded));
+        var sections = lods.Select(lod => lod.Sections.Select(section => (section.BaseIndex, section.NumTriangles, section.BaseVertexIndex, section.NumVertices)).ToArray()).ToArray();
+        Assert.All(sections, Assert.NotEmpty);
+
+        Assert.NotEmpty(lods[0].VertexBufferGPUSkin.VertsFloat);
+
+        Assert.True(lods[0].IsRenderDataLoaded);
+        Assert.False(lods[1].IsRenderDataLoaded);
+        Assert.Equal([6, 3], lods.Select(lod => lod.NumVertices).ToArray());
+        Assert.Equal(sections, lods.Select(lod => lod.Sections.Select(section => (section.BaseIndex, section.NumTriangles, section.BaseVertexIndex, section.NumVertices)).ToArray()).ToArray());
+    }
+
+    [Theory]
+    [InlineData(FixtureSerialization.Tagged)]
+    [InlineData(FixtureSerialization.Unversioned)]
     public void SkeletalMeshPreservesBonesLodsSkinWeightsAndMorphTarget(FixtureSerialization serialization)
     {
         using var provider = CreateMountedIoStoreProvider(serialization);
