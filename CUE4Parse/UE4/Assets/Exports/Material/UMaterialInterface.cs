@@ -99,71 +99,59 @@ public class UMaterialInterface : UUnrealMaterial
         // *****************************************
 
         if (CachedExpressionData == null) return;
-        if (CachedExpressionData.TryGetValue(out FStructFallback materialParameters, "Parameters"))
+        _cachedParameterValues ??= CachedExpressionData.TryGetValue(out FStructFallback materialParameters, "Parameters")
+            ? ReadCachedParameterValues(materialParameters, legacy: true)
+            : ReadCachedParameterValues(CachedExpressionData, legacy: false);
+        _cachedParameterValues.ApplyTo(parameters);
+    }
+
+    private CachedParameterValues? _cachedParameterValues;
+
+    private sealed record CachedParameterValues(
+        (string Name, float Value)[] Scalars,
+        (string Name, FLinearColor Value)[] Colors,
+        (string Name, ILoadableObject Value)[] Textures)
+    {
+        public void ApplyTo(CMaterialParams2 parameters)
         {
-            ParseCachedDataLegacy(parameters, materialParameters);
-        }
-        else
-        {
-            ParseCachedData(parameters, CachedExpressionData);
+            foreach (var (name, value) in Scalars) parameters.Scalars[name] = value;
+            foreach (var (name, value) in Colors) parameters.Colors[name] = value;
+            foreach (var (name, value) in Textures) parameters.VerifyTexture(name, value);
         }
     }
 
-    private void ParseCachedDataLegacy(CMaterialParams2 parameters, FStructFallback materialParameters)
+    private static CachedParameterValues ReadCachedParameterValues(FStructFallback materialParameters, bool legacy)
     {
+        var infosName = legacy ? "ParameterInfos" : "ParameterInfoSet";
+        var textureEntry = legacy ? 2 : 3;
+        var scalars = Array.Empty<(string, float)>();
+        var colors = Array.Empty<(string, FLinearColor)>();
+        var textures = Array.Empty<(string, ILoadableObject)>();
         if (!materialParameters.TryGetAllValues(out FStructFallback[] runtimeEntries, "RuntimeEntries"))
-            return;
+            return new CachedParameterValues(scalars, colors, textures);
 
         if (materialParameters.TryGetValue(out float[] scalarValues, "ScalarValues") &&
             runtimeEntries.Length > 0 &&
-            runtimeEntries[0].TryGetValue(out FMaterialParameterInfo[] scalarParameterInfos, "ParameterInfos"))
-            for (int i = 0; i < scalarParameterInfos.Length; i++)
-                parameters.Scalars[scalarParameterInfos[i].Name.Text] = scalarValues[i];
+            runtimeEntries[0].TryGetValue(out FMaterialParameterInfo[] scalarParameterInfos, infosName))
+            scalars = scalarParameterInfos.Select((info, i) => (info.Name.Text, scalarValues[i])).ToArray();
 
         if (materialParameters.TryGetValue(out FLinearColor[] vectorValues, "VectorValues") &&
             runtimeEntries.Length > 1 &&
-            runtimeEntries[1].TryGetValue(out FMaterialParameterInfo[] vectorParameterInfos, "ParameterInfos"))
-            for (int i = 0; i < vectorParameterInfos.Length; i++)
-                parameters.Colors[vectorParameterInfos[i].Name.Text] = vectorValues[i];
+            runtimeEntries[1].TryGetValue(out FMaterialParameterInfo[] vectorParameterInfos, infosName))
+            colors = vectorParameterInfos.Select((info, i) => (info.Name.Text, vectorValues[i])).ToArray();
 
-        if (materialParameters.TryGetValue(out FPackageIndex[] textureValues, "TextureValues") &&
-            runtimeEntries.Length > 2 &&
-            runtimeEntries[2].TryGetValue(out FMaterialParameterInfo[] textureParameterInfos, "ParameterInfos"))
-        {
-            for (int i = 0; i < textureParameterInfos.Length; i++)
-            {
-                parameters.VerifyTexture(textureParameterInfos[i].Name.Text, textureValues[i]);
-            }
-        }
+        if (runtimeEntries.Length > textureEntry &&
+            ReadTextureValues(materialParameters, legacy) is { } textureValues &&
+            runtimeEntries[textureEntry].TryGetValue(out FMaterialParameterInfo[] textureParameterInfos, infosName))
+            textures = textureParameterInfos.Select((info, i) => (info.Name.Text, textureValues[i])).ToArray();
+
+        return new CachedParameterValues(scalars, colors, textures);
     }
 
-    private void ParseCachedData(CMaterialParams2 parameters, FStructFallback materialParameters)
-    {
-        if (!materialParameters.TryGetAllValues(out FStructFallback[] runtimeEntries, "RuntimeEntries"))
-            return;
-
-        if (materialParameters.TryGetValue(out float[] scalarValues, "ScalarValues") &&
-            runtimeEntries.Length > 0 &&
-            runtimeEntries[0].TryGetValue(out FMaterialParameterInfo[] scalarParameterInfos, "ParameterInfoSet"))
-            for (int i = 0; i < scalarParameterInfos.Length; i++)
-                parameters.Scalars[scalarParameterInfos[i].Name.Text] = scalarValues[i];
-
-        if (materialParameters.TryGetValue(out FLinearColor[] vectorValues, "VectorValues") &&
-            runtimeEntries.Length > 1 &&
-            runtimeEntries[1].TryGetValue(out FMaterialParameterInfo[] vectorParameterInfos, "ParameterInfoSet"))
-            for (int i = 0; i < vectorParameterInfos.Length; i++)
-                parameters.Colors[vectorParameterInfos[i].Name.Text] = vectorValues[i];
-
-        if (materialParameters.TryGetValue(out FSoftObjectPath[] textureValues, "TextureValues") &&
-            runtimeEntries.Length > 3 &&
-            runtimeEntries[3].TryGetValue(out FMaterialParameterInfo[] textureParameterInfos, "ParameterInfoSet"))
-        {
-            for (int i = 0; i < textureParameterInfos.Length; i++)
-            {
-                parameters.VerifyTexture(textureParameterInfos[i].Name.Text, textureValues[i]);
-            }
-        }
-    }
+    private static ILoadableObject[]? ReadTextureValues(FStructFallback materialParameters, bool legacy) =>
+        legacy
+            ? materialParameters.TryGetValue(out FPackageIndex[] indices, "TextureValues") ? indices.Cast<ILoadableObject>().ToArray() : null
+            : materialParameters.TryGetValue(out FSoftObjectPath[] paths, "TextureValues") ? paths.Cast<ILoadableObject>().ToArray() : null;
 
     public void DeserializeInlineShaderMaps(FAssetArchive Ar, ICollection<FMaterialResource> loadedResources)
     {
