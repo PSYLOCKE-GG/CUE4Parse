@@ -1,4 +1,5 @@
 using System;
+using CUE4Parse.FileProvider;
 using CUE4Parse.UE4.Assets.Exports;
 
 namespace CUE4Parse.UE4.Assets;
@@ -38,7 +39,8 @@ public sealed class ExportInfo
         _loadLazy = new Lazy<UObject>(() =>
         {
             var sparse = _sparseLazy.Value;
-            deserialize(sparse);
+            var (_, bytes) = PackageCache.MeasureParse(() => { deserialize(sparse); return sparse; });
+            (Package.Provider as AbstractFileProvider)?.PackageCache.Grow(Package, bytes);
             return sparse;
         });
     }
