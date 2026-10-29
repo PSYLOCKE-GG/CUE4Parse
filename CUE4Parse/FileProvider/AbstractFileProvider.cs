@@ -62,9 +62,63 @@ namespace CUE4Parse.FileProvider
 
         /// <summary>
         /// Resident-package reuse for <see cref="LoadPackage(GameFile)"/> and its async twins.
-        /// Off by default; see <see cref="FileProvider.PackageCache"/>.
+        /// Bounded by its <see cref="PackageCache.MaxBytes"/>; see <see cref="FileProvider.PackageCache"/>.
         /// </summary>
-        public PackageCache PackageCache { get; } = new();
+        public PackageCache PackageCache => SharedOwner.Store;
+
+        /// <summary>The long-lived owner of packages that no narrower lifetime claims.</summary>
+        public PackageOwner SharedOwner { get; } = new("shared", new PackageCache(), isShared: true);
+
+        private readonly AsyncLocal<PackageOwner?> _currentOwner = new();
+
+        /// <summary>The owner that entry loads on this async flow go into; the shared owner outside any <see cref="EnterOwner"/>.</summary>
+        public PackageOwner CurrentOwner => _currentOwner.Value ?? SharedOwner;
+
+        /// <summary>Creates a lifetime of packages. Every package it loads is unreachable once the owner is dropped.</summary>
+        public PackageOwner CreateOwner(string name) => new(name, new PackageCache { MaxBytes = long.MaxValue }, isShared: false);
+
+        /// <summary>
+        /// Makes <paramref name="owner"/> the owner of entry loads on this async flow until the scope is disposed.
+        /// Enter it inside the work that owns the packages, not in the code that schedules that work.
+        /// </summary>
+        public OwnerScope EnterOwner(PackageOwner owner)
+        {
+            var previous = _currentOwner.Value;
+            _currentOwner.Value = owner;
+            return new OwnerScope(this, previous);
+        }
+
+        public readonly struct OwnerScope : IDisposable
+        {
+            private readonly AbstractFileProvider _provider;
+            private readonly PackageOwner? _previous;
+
+            internal OwnerScope(AbstractFileProvider provider, PackageOwner? previous)
+            {
+                _provider = provider;
+                _previous = previous;
+            }
+
+            public void Dispose() => _provider._currentOwner.Value = _previous;
+        }
+
+        /// <summary>
+        /// Path prefixes of the packages every lifetime reads. They load into <see cref="SharedOwner"/>
+        /// whatever the current owner is, and so do their imports. This is the one sharing rule.
+        /// </summary>
+        public IReadOnlyList<string> SharedPackagePrefixes { get; set; } = ["Engine/"];
+
+        /// <summary>The owner a load of <paramref name="file"/> goes into.</summary>
+        private PackageOwner OwnerFor(GameFile file)
+        {
+            var current = CurrentOwner;
+            current.ThrowIfDropped();
+            if (current.IsShared) return current;
+            foreach (var prefix in SharedPackagePrefixes)
+                if (file.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return SharedOwner;
+            return current;
+        }
 
         /// <summary>
         /// When LoadPackageAsync opens a pak or io-store entry whose uncompressed size is at or below
@@ -644,14 +698,30 @@ namespace CUE4Parse.FileProvider
 
         public virtual IPackage LoadPackage(GameFile file) => LoadPackage(file, EPackageReadFlags.None);
 
-        public virtual IPackage LoadPackage(GameFile file, EPackageReadFlags readFlags) => PackageCache.Enabled
-            ? PackageCache.GetOrLoad(file, readFlags, f => LoadPackageInner(f, readFlags))
-            : LoadPackageInner(file, readFlags);
-
-        private static IPackage Tag(IPackage package, GameFile file)
+        public virtual IPackage LoadPackage(GameFile file, EPackageReadFlags readFlags)
         {
-            if (package is AbstractUePackage p) p.SourceFile = file;
+            var current = CurrentOwner;
+            var owner = OwnerFor(file);
+            IPackage Load(GameFile f) => owner.Store.GetOrLoad(f, readFlags, g => LoadPackageInner(g, readFlags, owner));
+            // The shared store may evict and reload; the importing owner keeps the instance it first got.
+            return owner == current ? Load(file) : current.Store.GetOrKeep(file, readFlags, Load);
+        }
+
+        private static IPackage Tag(IPackage package, GameFile file, PackageOwner owner)
+        {
+            if (package is AbstractUePackage p)
+            {
+                p.SourceFile = file;
+                p.Owner = owner;
+            }
             return package;
+        }
+
+        // Construction resolves imports, so it runs with the package's owner as the current owner.
+        private IPackage Construct(PackageOwner owner, GameFile file, Func<IPackage> construct)
+        {
+            using var _ = EnterOwner(owner);
+            return Tag(construct(), file, owner);
         }
 
         /// <summary>
@@ -675,7 +745,7 @@ namespace CUE4Parse.FileProvider
             _ => file.SafeCreateReader(header),
         };
 
-        private IPackage LoadPackageInner(GameFile file, EPackageReadFlags readFlags)
+        private IPackage LoadPackageInner(GameFile file, EPackageReadFlags readFlags, PackageOwner owner)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
@@ -687,13 +757,13 @@ namespace CUE4Parse.FileProvider
             {
                 case FPakEntry pakEntry:
                     var pakUasset = pakEntry.CreateStreamingReader();
-                    return Tag(new Package(pakUasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
+                    return Construct(owner, file, () => new Package(pakUasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName));
                 case VersionedGameFile:
                     var uasset = file.CreateReader();
-                    return Tag(new Package(uasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
+                    return Construct(owner, file, () => new Package(uasset, uexp?.CreateReader(), lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName));
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     var ioUasset = ioStoreEntry.CreateStreamingReader();
-                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags), file);
+                    return Construct(owner, file, () => new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags));
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
             }
@@ -747,11 +817,18 @@ namespace CUE4Parse.FileProvider
 
         // A cache-shared load is driven by the initiating caller's token; late joiners observe
         // its cancellation, and a canceled load is never cached (a retry starts fresh).
-        public virtual Task<IPackage> LoadPackageAsync(GameFile file, EPackageReadFlags readFlags, CancellationToken cancellationToken) => PackageCache.Enabled
-            ? PackageCache.GetOrLoadAsync(file, readFlags, f => LoadPackageInnerAsync(f, readFlags, cancellationToken))
-            : LoadPackageInnerAsync(file, readFlags, cancellationToken);
+        public virtual Task<IPackage> LoadPackageAsync(GameFile file, EPackageReadFlags readFlags, CancellationToken cancellationToken)
+        {
+            var current = CurrentOwner;
+            var owner = OwnerFor(file);
+            Task<IPackage> Load(GameFile f) => owner.Store.GetOrLoadAsync(f, readFlags, g => LoadPackageInnerAsync(g, readFlags, owner, cancellationToken));
+            // The shared store may evict and reload; the importing owner keeps the instance it first got.
+            return owner == current ? Load(file) : current.Store.GetOrKeepAsync(file, readFlags, Load);
+        }
 
-        private async Task<IPackage> LoadPackageInnerAsync(GameFile file, EPackageReadFlags readFlags, CancellationToken cancellationToken)
+        // Readers are created across awaits, so their buffers are outside the measured parse. A package keeps
+        // its pre-buffered archive for the lifetime of its lazy exports, so that buffer weighs on the package too.
+        private async Task<(IPackage Package, long Bytes)> LoadPackageInnerAsync(GameFile file, EPackageReadFlags readFlags, PackageOwner owner, CancellationToken cancellationToken)
         {
             if (!file.IsUePackage) throw new ArgumentException("cannot load non-UE package", nameof(file));
             Files.FindPayloads(file, out var uexp, out var ubulks, out var uptnls);
@@ -768,18 +845,26 @@ namespace CUE4Parse.FileProvider
                         ? await pakEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : pakEntry.CreateStreamingReader();
                     var uexpAr = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return Tag(new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
+                    return Weighed(PackageCache.MeasureParse(() => Construct(owner, file, () => new Package(pakUasset, uexpAr, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName))), pakUasset, uexpAr);
                 case VersionedGameFile:
                     var uasset = await file.CreateReaderAsync(cancellationToken).ConfigureAwait(false);
                     var uexpArOs = uexp != null ? await uexp.CreateReaderAsync(cancellationToken).ConfigureAwait(false) : null;
-                    return Tag(new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName), file);
+                    return Weighed(PackageCache.MeasureParse(() => Construct(owner, file, () => new Package(uasset, uexpArOs, lazyUbulk, lazyUptnl, this, UseLazyPackageSerialization, readFlags, archiveName))), uasset, uexpArOs);
                 case FIoStoreEntry ioStoreEntry when this is IVfsFileProvider vfsFileProvider:
                     FArchive ioUasset = ioStoreEntry.Size <= PackagePreBufferThresholdBytes
                         ? await ioStoreEntry.CreateReaderAsync(cancellationToken).ConfigureAwait(false)
                         : ioStoreEntry.CreateStreamingReader();
-                    return Tag(new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags), file);
+                    return Weighed(PackageCache.MeasureParse(() => Construct(owner, file, () => new IoPackage(ioUasset, ioStoreEntry.IoStoreReader.ContainerHeader, lazyUbulk, lazyUptnl, vfsFileProvider, FindOptionalSegment(ioStoreEntry), archiveName, readFlags))), ioUasset);
                 default:
                     throw new NotImplementedException($"type {file.GetType()} is not supported");
+            }
+
+            static (IPackage Package, long Bytes) Weighed((IPackage Package, long Bytes) parsed, params FArchive?[] archives)
+            {
+                var buffered = 0L;
+                foreach (var archive in archives)
+                    if (archive is FByteArchive) buffered += archive.Length;
+                return (parsed.Package, parsed.Bytes + buffered);
             }
         }
 
