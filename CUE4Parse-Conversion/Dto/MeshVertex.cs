@@ -34,7 +34,7 @@ public readonly struct MeshVertex : IMeshVertex, INaniteVertex<MeshVertex>
         Uv = uv;
     }
 
-    public MeshVertex(FVector position, FPackedNormal normal, FPackedNormal tangent, FMeshUVFloat uv) : this(position, (FVector4) normal, (FVector4) tangent, uv)
+    public MeshVertex(FVector position, FPackedNormal normal, FPackedNormal tangent, FMeshUVFloat uv) : this(position, (FVector4) normal, PackedTangent.AndSign(tangent, normal), uv)
     {
 
     }
@@ -73,7 +73,7 @@ public readonly struct SkinnedMeshVertex : IMeshVertex, INaniteVertex<SkinnedMes
         Uv = uv;
     }
 
-    public SkinnedMeshVertex(FSkelMeshVertexBase vertex, ushort[] boneMap) : this(vertex.Pos, vertex.Normal[2], vertex.Normal[0], vertex.UVs[0])
+    public SkinnedMeshVertex(FSkelMeshVertexBase vertex, ushort[] boneMap) : this(vertex.Pos, vertex.Normal[2], PackedTangent.AndSign(vertex.Normal[0], vertex.Normal[2]), vertex.UVs[0])
     {
         if (vertex.Infs == null) return;
 
@@ -104,7 +104,7 @@ public readonly struct SkinnedMeshVertex : IMeshVertex, INaniteVertex<SkinnedMes
         _influences = [new MeshBoneInfluenceDto(bone, ushort.MaxValue, 1f)];
     }
 
-    public SkinnedMeshVertex(FVector position, FPackedNormal normal, FPackedNormal tangent, FMeshUVFloat uv, ushort bone) : this(position, (FVector4) normal, (FVector4) tangent, uv, bone)
+    public SkinnedMeshVertex(FVector position, FPackedNormal normal, FPackedNormal tangent, FMeshUVFloat uv, ushort bone) : this(position, (FVector4) normal, PackedTangent.AndSign(tangent, normal), uv, bone)
     {
 
     }
@@ -122,4 +122,15 @@ public readonly struct SkinnedMeshVertex : IMeshVertex, INaniteVertex<SkinnedMes
     {
         return new SkinnedMeshVertex(position, attributes, hasTangents);
     }
+}
+
+internal static class PackedTangent
+{
+    /// <summary>
+    ///     The tangent with the bitangent sign as w, the shape <see cref="FNaniteVertexAttributes.TangentXAndSign"/> has.
+    ///     UE keeps the sign in TangentZ.W and writes TangentX.W as the maximum (StaticMeshVertexBuffer.h:39-43,
+    ///     PackedNormal.h:122 and :366), and reads only TangentZ.w (LocalVertexFactory.ush:757).
+    /// </summary>
+    public static FVector4 AndSign(FPackedNormal tangentX, FPackedNormal tangentZ) =>
+        new(tangentX.X, tangentX.Y, tangentX.Z, tangentZ.W < 0 ? -1f : 1f);
 }

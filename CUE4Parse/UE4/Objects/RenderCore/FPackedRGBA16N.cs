@@ -50,7 +50,7 @@ namespace CUE4Parse.UE4.Objects.RenderCore
 
         public static explicit operator FPackedNormal(FPackedRGBA16N packedRGBA16N)
         {
-            return new((FVector) packedRGBA16N);
+            return new((FVector4) packedRGBA16N);
         }
     }
 }
