@@ -62,19 +62,7 @@ public abstract class AbstractPropertyHolder : IPropertyHolder
 
     public T GetByIndex<T>(int index) => PropertyUtil.GetByIndex<T>(this, index);
 
-    public bool TryGetValue<T>(out T obj, params string[] names)
-    {
-        foreach (string name in names)
-        {
-            if (this.TryGet<T>(name, out obj, comparisonType: StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        obj = default!;
-        return false;
-    }
+    public bool TryGetValue<T>(out T obj, params string[] names) => PropertyUtil.TryGetValue(this, out obj, names);
 
     public bool TryGetAllValues<T>(out T[] obj, string name)
     {
@@ -115,6 +103,7 @@ public class UObject : AbstractPropertyHolder
 
     // public FObjectExport Export;
     public IPackage? Owner => Outer?.Package;
+    [JsonIgnore] public EGame? Game => Owner?.Provider?.Versions.Game;
     public string ExportType => Class?.Name.Text ?? GetType().Name;
 
     public UObject()
@@ -609,34 +598,57 @@ public static class PropertyUtil
 {
     public static bool SearchPropertyInTemplate = false;
 
-    private static bool TryGet(this IPropertyHolder holder, string name, out FPropertyTag? tag, StringComparison comparisonType = StringComparison.Ordinal)
+    public static bool TryGetValue<T>(IPropertyHolder holder, out T value, params string[] names)
+    {
+        if (holder.TryGet(names, out var property, StringComparison.OrdinalIgnoreCase) && property?.Tag?.GetValue(typeof(T)) is T propertyValue)
+        {
+            value = propertyValue;
+            return true;
+        }
+
+        value = default!;
+        return false;
+    }
+
+    private static bool TryGet(this IPropertyHolder holder, string name, out FPropertyTag? tag, StringComparison comparisonType = StringComparison.Ordinal) => holder.TryGet([name], out tag, comparisonType);
+    private static bool TryGet(this IPropertyHolder holder, ReadOnlySpan<string> names, out FPropertyTag? tag, StringComparison comparisonType, HashSet<IPropertyHolder>? visited = null)
     {
         var properties = holder.Properties;
-        for (var i = 0; i < properties.Count; i++)
+        foreach (var name in names)
         {
-            var prop = properties[i];
-            var propName = prop.Name;
-            if (propName.Number == 0
-                ? propName.PlainText.Equals(name, comparisonType)
-                : propName.Text.Equals(name, comparisonType))
+            for (var i = 0; i < properties.Count; i++)
             {
-                tag = prop;
-                return true;
+                var prop = properties[i];
+                var propName = prop.Name;
+                if (propName.Number == 0
+                    ? propName.PlainText.Equals(name, comparisonType)
+                    : propName.Text.Equals(name, comparisonType))
+                {
+                    tag = prop;
+                    return true;
+                }
             }
         }
 
         if (SearchPropertyInTemplate && holder is UObject obj)
         {
+            visited ??= [];
+            if (!visited.Add(holder))
+            {
+                tag = null;
+                return false;
+            }
+
             // if not here then in look in template
             var temp = obj.Template?.Load();
-            if (temp != null && temp.TryGet(name, out tag, comparisonType))
+            if (temp != null && temp.TryGet(names, out tag, comparisonType, visited))
             {
                 return true;
             }
 
             // if not here then in look in class ..? // not sure about this one
             temp = obj.Class?.Load();
-            if (temp != null && temp.TryGet(name, out tag, comparisonType))
+            if (temp != null && temp.TryGet(names, out tag, comparisonType, visited))
             {
                 return true;
             }
@@ -675,7 +687,7 @@ public static class PropertyUtil
     // Not optimal as well. Can't really compare against null or default. That's why this is a copy of GetOrDefault that throws instead
     public static T Get<T>(IPropertyHolder holder, string name, StringComparison comparisonType = StringComparison.Ordinal)
     {
-        if (!holder.TryGet(name, out var tag) || tag?.Tag == null)
+        if (!holder.TryGet(name, out var tag, comparisonType) || tag?.Tag == null)
         {
             throw new NullReferenceException($"{holder.GetType().Name} does not have a property '{name}'");
         }

@@ -337,7 +337,16 @@ public class FixtureTextureDecodeTests
         var reference = SKBitmap.Decode(path);
         Assert.NotNull(reference);
 
-        if (expectation.Asset is "T_BC4" or "T_EAC_R11")
+        if (expectation.Asset is "T_BC4")
+        {
+            for (var y = 0; y < reference.Height; y++)
+                for (var x = 0; x < reference.Width; x++)
+                {
+                    var value = reference.GetPixel(x, y).Red;
+                    reference.SetPixel(x, y, new SKColor(value, value, value, 255));
+                }
+        }
+        else if (expectation.Asset is "T_EAC_R11")
         {
             for (var y = 0; y < reference.Height; y++)
                 for (var x = 0; x < reference.Width; x++)

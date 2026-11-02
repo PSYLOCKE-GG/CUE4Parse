@@ -17,17 +17,23 @@ namespace CUE4Parse_Conversion.Writers.Gltf;
 /// every other attribute through <see cref="IVertexCustom"/> and writes zeros when the vertex
 /// does not supply it. So this type serves TEXCOORD_4 and up as custom attributes.
 /// </remarks>
-public struct VertexColorXTextureX : IVertexCustom, IEquatable<VertexColorXTextureX>
+public struct VertexColorXTextureX : IVertexMaterial, IVertexCustom, IEquatable<VertexColorXTextureX>
 {
     private const string TexCoordPrefix = "TEXCOORD_";
     private const int FirstCustomTexCoord = 4;
 
-    public int MaxColors => 1; // Do we need more?
-    public int MaxTextCoords => _numTexCoords;
+    // Preserves vertex color masks without affecting the material's color or opacity
+    // Custom attributes must start with an underscore!!!
+    private const string ShaderMaskAttribute = "_UE_COLOR_0";
+    private readonly bool _shaderMask;
+
+    internal uint? SourceIndex { readonly get; set; }
+
+    public readonly int MaxColors => _shaderMask ? 0 : 1;
+    public readonly int MaxTextCoords => _numTexCoords;
 
     public Vector4 Color;
 
-    // public List<Vector2> TexCoords;
     public Vector2 TexCoord0;
     public Vector2 TexCoord1;
     public Vector2 TexCoord2;
@@ -37,9 +43,9 @@ public struct VertexColorXTextureX : IVertexCustom, IEquatable<VertexColorXTextu
     public Vector2 TexCoord6;
     public Vector2 TexCoord7;
 
-    private byte _numTexCoords;
+    private readonly byte _numTexCoords;
 
-    public VertexColorXTextureX(Vector2[] texCoords, Vector4? color = null) : this(texCoords, texCoords.Length, color)
+    public VertexColorXTextureX(Vector2[] texCoords, Vector4? color = null, bool shaderMask = false) : this(texCoords, texCoords.Length, color, shaderMask)
     {
     }
 
@@ -47,8 +53,9 @@ public struct VertexColorXTextureX : IVertexCustom, IEquatable<VertexColorXTextu
     /// How many UV sets the source LOD populates. Slots past this count stay at zero and are
     /// never written to the glTF output.
     /// </param>
-    public VertexColorXTextureX(Vector2[] texCoords, int numTexCoords, Vector4? color = null)
+    public VertexColorXTextureX(Vector2[] texCoords, int numTexCoords, Vector4? color = null, bool shaderMask = false)
     {
+        _shaderMask = shaderMask;
         // A vertex without colours must not multiply the base colour away, so default to white.
         Color = color ?? Vector4.One;
         _numTexCoords = ClampTexCoordCount(numTexCoords);
@@ -98,11 +105,24 @@ public struct VertexColorXTextureX : IVertexCustom, IEquatable<VertexColorXTextu
         TexCoord3 += delta.GetTexCoord(3);
     }
 
-    public IEnumerable<string> CustomAttributes =>
-        Enumerable.Range(FirstCustomTexCoord, Math.Max(0, _numTexCoords - FirstCustomTexCoord)).Select(i => TexCoordPrefix + i);
-
-    public bool TryGetCustomAttribute(string attributeName, out object value)
+    public readonly IEnumerable<string> CustomAttributes
     {
+        get
+        {
+            if (_shaderMask) yield return ShaderMaskAttribute;
+            for (var i = FirstCustomTexCoord; i < _numTexCoords; i++)
+                yield return TexCoordPrefix + i;
+        }
+    }
+
+    public readonly bool TryGetCustomAttribute(string attributeName, out object value)
+    {
+        if (_shaderMask && attributeName == ShaderMaskAttribute)
+        {
+            value = Color;
+            return true;
+        }
+
         if (TryParseCustomTexCoord(attributeName, out var index) && index < _numTexCoords)
         {
             value = GetTexCoord(index);
@@ -115,12 +135,14 @@ public struct VertexColorXTextureX : IVertexCustom, IEquatable<VertexColorXTextu
 
     public void SetCustomAttribute(string attributeName, object value)
     {
-        if (TryParseCustomTexCoord(attributeName, out var index) && value is Vector2 coord)
+        if (_shaderMask && attributeName == ShaderMaskAttribute && value is Vector4 color)
+            Color = color;
+        else if (TryParseCustomTexCoord(attributeName, out var index) && value is Vector2 coord)
             ((IVertexMaterial) this).SetTexCoord(index, coord);
     }
 
     // The cooked UVs pass through unchanged. A cooked channel can hold NaN, and the export keeps it.
-    public void Validate() { }
+    public readonly void Validate() { }
 
     private static bool TryParseCustomTexCoord(string attributeName, out int index)
     {
@@ -130,58 +152,47 @@ public struct VertexColorXTextureX : IVertexCustom, IEquatable<VertexColorXTextu
             && index >= FirstCustomTexCoord && index < Constants.MAX_MESH_UV_SETS;
     }
 
-    public VertexMaterialDelta Subtract(IVertexMaterial baseValue)
+    public readonly VertexMaterialDelta Subtract(IVertexMaterial baseValue)
     {
         return new VertexMaterialDelta(this).Subtract(new VertexMaterialDelta(baseValue));
     }
 
-    public IEnumerable<KeyValuePair<string, AttributeFormat>> GetEncodingAttributes()
+    public readonly IEnumerable<KeyValuePair<string, AttributeFormat>> GetEncodingAttributes()
     {
-        yield return new KeyValuePair<string, AttributeFormat>("COLOR_0", new AttributeFormat(DimensionType.VEC4, EncodingType.UNSIGNED_BYTE, true));
+        // glTF COLOR_0 multiplies base color and opacity, shader masks use a custom attribute
+        var colorAttribute = _shaderMask ? ShaderMaskAttribute : "COLOR_0";
+        yield return new(colorAttribute, new AttributeFormat(DimensionType.VEC4, EncodingType.UNSIGNED_BYTE, true));
 
         // Emit exactly the UV slots the source LOD populates. MeshBuilder reads attributes off
         // the first vertex fragment it sees; every vertex in a mesh is built with the same UV
         // count, so the schema stays uniform.
         var count = _numTexCoords == 0 ? 1 : _numTexCoords;
         for (var i = 0; i < count; i++)
-            yield return new KeyValuePair<string, AttributeFormat>($"TEXCOORD_{i}", new AttributeFormat(DimensionType.VEC2));
+            yield return new($"TEXCOORD_{i}", new AttributeFormat(DimensionType.VEC2));
     }
 
-    public Vector2 GetTexCoord(int index)
+    public readonly Vector2 GetTexCoord(int index)
     {
-        switch (index)
+        return index switch
         {
-            case 0: return TexCoord0;
-            case 1: return TexCoord1;
-            case 2: return TexCoord2;
-            case 3: return TexCoord3;
-            case 4: return TexCoord4;
-            case 5: return TexCoord5;
-            case 6: return TexCoord6;
-            case 7: return TexCoord7;
-            default: throw new ArgumentOutOfRangeException(nameof(index));
-        }
+            0 => TexCoord0,
+            1 => TexCoord1,
+            2 => TexCoord2,
+            3 => TexCoord3,
+            4 => TexCoord4,
+            5 => TexCoord5,
+            6 => TexCoord6,
+            7 => TexCoord7,
+            _ => throw new ArgumentOutOfRangeException(nameof(index)),
+        };
     }
 
-    public Vector4 GetColor(int index)
-    {
-        if (index != 0)
-            throw new ArgumentOutOfRangeException(nameof(index));
-        return Color;
-    }
+    public readonly Vector4 GetColor(int index)
+        => index != 0 ? throw new ArgumentOutOfRangeException(nameof(index)) : Color;
 
-    private static void Resize<T>(List<T> list, int size, T val)
+    public readonly bool Equals(VertexColorXTextureX other)
     {
-        if (size > list.Count)
-            while (size - list.Count > 0)
-                list.Add(val);
-        else if (size < list.Count)
-            while (list.Count - size > 0)
-                list.RemoveAt(list.Count-1);
-    }
-
-    public bool Equals(VertexColorXTextureX other)
-    {
+        if (other.SourceIndex != SourceIndex || other._shaderMask != _shaderMask) return false;
         if (_numTexCoords != other._numTexCoords) return false;
         if (other.Color != Color) return false;
 
