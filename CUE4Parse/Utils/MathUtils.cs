@@ -27,15 +27,8 @@ namespace CUE4Parse.Utils
             }
         }
 
-        public static float InvSqrt(this float x)
-        {
-            float xhalf = 0.5f * x;
-            int i = BitConverter.SingleToInt32Bits(x);
-            i = 0x5f3759df - (i >> 1);
-            x = BitConverter.Int32BitsToSingle(i);
-            x = x * (1.5f - xhalf * x * x);
-            return x;
-        }
+        // UE's FMath::InvSqrt is exact: 1 / sqrt (GenericPlatformMath.h:552, UnrealPlatformMathSSE.h:24-33).
+        public static float InvSqrt(this float x) => 1f / MathF.Sqrt(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsPowerOfTwo(int value)
