@@ -22,7 +22,8 @@ public class CMaterialParams2
 
     public const string RegexDiffuse = ".*(?:Diff|_?Albedo|_?Base_?Colou?r).*|(?:^|[_ ])Colou?r(?:[_ ]|$)|(?:_Tex|_D|_DIF|_DM|_C|_CM|_DS|_DA)$";
     public const string RegexNormals = "^NO_|.*Norm.*|(?:_N|_NM|_NRM)$";
-    public const string RegexSpecularMasks = "^SP_|.*(?:Specu|_S_|MR|(?<!no)RM).*|(?:_S|_LP|_PAK)$";
+    // RM must start or end a word, so "ColorMap" and "ColorMask" stay diffuse.
+    public const string RegexSpecularMasks = "^SP_|.*(?:Specu|_S_|MR|(?<!no)(?:(?<![a-z])RM|RM(?![a-z]))).*|(?:_S|_LP|_PAK)$";
     public const string RegexEmissive = ".*Emiss.*|(?:_E|_EM)$";
     public const string RegexOcclusion = @"Occlu|(?:^|_)AO(?:_|\d*$)|(?-i:(?<![A-Z])AO(?![a-z]))";
     public const string RegexChannelNames = @"Ambient[ _]*Occlusion|Occlusion|Occl|Occ|Roughness|Rough|Metallic|Metal|Met|Specular|Spec|Height";
