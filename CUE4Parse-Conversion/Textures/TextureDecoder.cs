@@ -248,29 +248,16 @@ public static class TextureDecoder
         sizeY = mip.SizeY;
         sizeZ = mip.SizeZ;
 
+        var slices = 0;
         if (texture is UVolumeTexture or UTextureCube)
         {
-            var slices = texture.PlatformData.GetNumSlices();
-            if (texture.Owner?.Provider?.Versions.Game == EGame.GAME_Borderlands4)
-            {
-                slices = slices != 1 ? slices >> 1 : 1;
-            }
-
-            // A volume's depth shrinks with every mip and is written on the mip itself, while
-            // PackedData only describes mip 0 and doesn't always work with it. Mips below 4.20
-            // have no depth at all, so we fall back to the slice count when there's nothing usable
-            if (texture is UVolumeTexture && sizeZ > 1)
-            {
-                slices = sizeZ;
-            }
-
-            sizeY *= slices;
-            if (sizeZ == slices) sizeZ = 1;
+            slices = SliceCount(texture, mip);
+            sizeZ = 1;
         }
 
         // TODO: Only known game to use this is PUBG Mobile, not sure if this is right place to decompress, probably not and should be refactored
         if (texture.PlatformData.PixelFormat.EndsWith("_crunched", StringComparison.OrdinalIgnoreCase))
-            bytes = CrunchDecoder.DecompressMip(bytes, sizeX, sizeY, sizeZ, formatInfo);
+            bytes = CrunchDecoder.DecompressMip(bytes, sizeX, sizeY * Math.Max(slices, 1), sizeZ, formatInfo);
 
         // If the platform requires deswizzling, check if we should even try.
         if (platform is not ETexturePlatform.DesktopMobile)
@@ -296,7 +283,44 @@ public static class TextureDecoder
                 break;
         }
 
-        DecodeBytes(bytes, sizeX, sizeY, sizeZ, formatInfo, texture.IsNormalMap, out data, out colorType);
+        if (slices == 0)
+        {
+            DecodeBytes(bytes, sizeX, sizeY, sizeZ, formatInfo, texture.IsNormalMap, out data, out colorType);
+            return;
+        }
+
+        DecodeSlices(bytes, sizeX, sizeY, slices, formatInfo, texture.IsNormalMap, out data, out colorType);
+        sizeY *= slices;
+    }
+
+    /// <summary>
+    /// The slices of a volume or cube mip: a volume mip holds its own depth and a cube mip holds the platform data's
+    /// slice count, six for a cube (UE 5.3 TextureDerivedData.cpp:2289-2295). Mips before 4.20 carry no depth
+    /// (FTexture2DMipMap), so a volume of those takes the platform data's count.
+    /// </summary>
+    private static int SliceCount(UTexture texture, FTexture2DMipMap mip)
+    {
+        var game = texture.Owner?.Provider?.Versions.Game;
+        if (texture is UVolumeTexture && game is not < EGame.GAME_UE4_20)
+            return Math.Max(mip.SizeZ, 1);
+
+        var slices = texture.PlatformData.GetNumSlices();
+        return game == EGame.GAME_Borderlands4 && slices != 1 ? slices >> 1 : slices;
+    }
+
+    /// <summary>
+    /// Decodes each slice of a mip on its own and stacks the slices into one strip. A slice is a whole number of
+    /// blocks (UE 5.3 TextureDerivedData.cpp:2289-2295), so a slice smaller than a block keeps a padded block of its own.
+    /// </summary>
+    private static void DecodeSlices(byte[] bytes, int sizeX, int sizeY, int slices, FPixelFormatInfo formatInfo, bool isNormalMap, out byte[] data, out EPixelFormat colorType)
+    {
+        var sliceBytes = (sizeX + formatInfo.BlockSizeX - 1) / formatInfo.BlockSizeX
+            * ((sizeY + formatInfo.BlockSizeY - 1) / formatInfo.BlockSizeY) * formatInfo.BlockBytes;
+        var decoded = new byte[slices][];
+        colorType = formatInfo.UnrealFormat;
+        for (var slice = 0; slice < slices; slice++)
+            DecodeBytes(bytes[(slice * sliceBytes)..((slice + 1) * sliceBytes)], sizeX, sizeY, 1, formatInfo, isNormalMap, out decoded[slice], out colorType);
+        data = [.. decoded.SelectMany(slice => slice)];
     }
 
     private static void DecodeBytes(byte[] bytes, int sizeX, int sizeY, int sizeZ, FPixelFormatInfo formatInfo, bool isNormalMap, out byte[] data, out EPixelFormat colorType)
