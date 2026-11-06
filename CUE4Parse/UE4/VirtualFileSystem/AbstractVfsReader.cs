@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using CUE4Parse.FileProvider.Objects;
@@ -96,25 +95,100 @@ namespace CUE4Parse.UE4.VirtualFileSystem
             if (!Name.EndsWith("_P.pak", StringComparison.OrdinalIgnoreCase) && !Name.EndsWith("_P.utoc", StringComparison.OrdinalIgnoreCase) && !Name.EndsWith("_P.o.utoc", StringComparison.OrdinalIgnoreCase))
                 return;
 
+            // UE reads the chunk version from the file name segment between its last two underscores
+            // (FPakPlatformFile::Mount, IPlatformFilePak.cpp:7824-7846): "1.1.3939753" for
+            // Patch_-Windows_1.1.3939753_P and "99999999" for MyMod_99999999_P. A single number is
+            // taken as-is; anything else falls back to version 1. Collecting every digit of the
+            // segment instead turns a patch's version into a chunk number in the hundreds of millions
+            // and lets a shipped patch shadow every mod.
             var chunkVersionNumber = 1u;
             var versionEndIndex = Name.LastIndexOf('_');
-            if (versionEndIndex != -1 && versionEndIndex > 0)
+            if (versionEndIndex > 0)
             {
                 var versionStartIndex = Name.LastIndexOf('_', versionEndIndex - 1);
                 if (versionStartIndex != -1)
                 {
-                    versionStartIndex++;
-                    var versionString = Name.Substring(versionStartIndex, versionEndIndex - versionStartIndex);
-                    versionString = Regex.Replace(versionString, "[^\\d]", "");
-
-                    if (int.TryParse(versionString, out var chunkVersionSigned) && chunkVersionSigned >= 1)
+                    var versionString = Name.Substring(versionStartIndex + 1, versionEndIndex - versionStartIndex - 1);
+                    // Marvel Rivals' client reads a three-part version as a build number ahead of the
+                    // single-number rule: FPakPlatformFile::Mount in Marvel-Win64-Shipping.exe splits the
+                    // segment on '.', and for three numeric parts takes
+                    // major * 1,000,000 + minor * 1,000 + patch as the chunk version. That is how a patch
+                    // beats the one before it (Patch_-Windows_1.1.3939753_P -> 4,940,753) whichever way a
+                    // name sorts; stock UE leaves such a segment at version 1 and orders patches by name.
+                    if (Game == GAME_MarvelRivals && SemanticVersion(versionString) is { } semantic)
+                    {
+                        chunkVersionNumber = semantic;
+                    }
+                    else if (IsNumericVersion(versionString) && LeadingInteger(versionString) is { } chunkVersionSigned && chunkVersionSigned >= 1)
                     {
                         // Increment by one so that the first patch file still gets more priority than the base pak file
-                        chunkVersionNumber = (uint)chunkVersionSigned + 1;
+                        chunkVersionNumber = (uint) chunkVersionSigned + 1;
                     }
                 }
             }
-            ReadOrder += 100 * chunkVersionNumber;
+            // UE adds in a uint32 (its FPakListEntry.ReadOrder); the sum is kept wide here so a
+            // large chunk version keeps its place instead of wrapping below the base pak order.
+            ReadOrder += 100L * chunkVersionNumber;
+        }
+
+        /// <summary>
+        /// The build number a three-part dotted version names, as Marvel Rivals' pak mount reads one:
+        /// <c>major * 1,000,000 + minor * 1,000 + patch</c>. Null when the segment is not three numeric
+        /// parts or names no positive number.
+        /// </summary>
+        private static uint? SemanticVersion(string value)
+        {
+            var parts = value.Split('.');
+            if (parts.Length != 3)
+                return null;
+            var numbers = new int[3];
+            for (var i = 0; i < 3; i++)
+            {
+                if (!IsNumericVersion(parts[i]) || LeadingInteger(parts[i]) is not { } number || number < 0)
+                    return null;
+                numbers[i] = number;
+            }
+            var version = 1000L * (numbers[1] + 1000L * numbers[0]) + numbers[2];
+            return version is > 0 and <= uint.MaxValue ? (uint) version : null;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="value"/> is numeric in UE's sense (FString::IsNumeric,
+        /// String.cpp:1271 and CString.h:75): an optional sign, then digits with at most one dot.
+        /// </summary>
+        private static bool IsNumericVersion(string value)
+        {
+            if (value.Length == 0)
+                return false;
+            var digits = 0;
+            var dots = 0;
+            for (var i = 0; i < value.Length; i++)
+            {
+                var c = value[i];
+                if (i == 0 && (c == '-' || c == '+'))
+                    continue;
+                if (char.IsAsciiDigit(c))
+                    digits++;
+                else if (c == '.' && dots++ == 0)
+                    continue;
+                else
+                    return false;
+            }
+            return digits > 0;
+        }
+
+        /// <summary>
+        /// The integer a numeric string starts with, as UE's FCString::Atoi reads it: the sign and the
+        /// digits before the first dot. Null past the range of an int.
+        /// </summary>
+        private static int? LeadingInteger(string value)
+        {
+            var end = 0;
+            if (end < value.Length && (value[end] == '-' || value[end] == '+'))
+                end++;
+            while (end < value.Length && char.IsAsciiDigit(value[end]))
+                end++;
+            return int.TryParse(value[..end], out var number) ? number : null;
         }
 
         private int GetPakOrderFromPakFilePath()

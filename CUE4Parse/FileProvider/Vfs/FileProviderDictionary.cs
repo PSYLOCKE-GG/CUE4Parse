@@ -10,7 +10,15 @@ namespace CUE4Parse.FileProvider.Vfs
 {
     public class FileProviderDictionary : IReadOnlyDictionary<string, GameFile>
     {
-        private readonly ConcurrentBag<KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>> _indicesBag = [];
+        /// <summary>
+        /// One mounted source's files. <see cref="Source"/> is the container's path: UE mounts the pak
+        /// files it finds in descending path order and resolves two files that share a read order by
+        /// that mount order (FPakPlatformFile::MountAllPakFiles, IPlatformFilePak.cpp:8129 and
+        /// <c>PakFiles.StableSort()</c>, :7853), so the later path wins.
+        /// </summary>
+        private readonly record struct FileIndex(long ReadOrder, string Source, IReadOnlyDictionary<string, GameFile> Files);
+
+        private readonly ConcurrentBag<FileIndex> _indicesBag = [];
 
         private ConcurrentDictionary<FPackageId, GameFile>? _byId;
         private ConcurrentDictionary<FPackageId, GameFile>? _optionalById;
@@ -24,7 +32,7 @@ namespace CUE4Parse.FileProvider.Vfs
         private readonly ValueEnumerable _values;
         public IEnumerable<GameFile> Values => _values;
 
-        private volatile KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>[]? _sortedIndicesCache;
+        private volatile FileIndex[]? _sortedIndicesCache;
         private readonly object _sortCacheLock = new object();
 
         public FileProviderDictionary()
@@ -34,7 +42,7 @@ namespace CUE4Parse.FileProvider.Vfs
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>[] GetSortedIndices()
+        private FileIndex[] GetSortedIndices()
         {
             var cache = _sortedIndicesCache;
             if (cache != null)
@@ -46,7 +54,12 @@ namespace CUE4Parse.FileProvider.Vfs
                 if (cache != null)
                     return cache;
 
-                cache = _indicesBag.OrderByDescending(kvp => kvp.Key).ToArray();
+                // UE keeps the highest read order first and, within one order, the mount order of the
+                // descending path sort; both are reproduced here so parallel mounting changes nothing.
+                cache = _indicesBag
+                    .OrderByDescending(index => index.ReadOrder)
+                    .ThenByDescending(index => index.Source, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
                 _sortedIndicesCache = cache;
                 return cache;
             }
@@ -159,7 +172,8 @@ namespace CUE4Parse.FileProvider.Vfs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddFiles(IReadOnlyDictionary<string, GameFile> newFiles, long readOrder = 0,
             IReadOnlyDictionary<FPackageId, GameFile>? packageFiles = null,
-            IReadOnlyDictionary<FPackageId, GameFile>? optionalSegmentPackageFiles = null)
+            IReadOnlyDictionary<FPackageId, GameFile>? optionalSegmentPackageFiles = null,
+            string source = "")
         {
             if (packageFiles is null)
             {
@@ -181,7 +195,7 @@ namespace CUE4Parse.FileProvider.Vfs
                     AddPackage(packageIndex, packageId, file);
             }
 
-            _indicesBag.Add(new KeyValuePair<long, IReadOnlyDictionary<string, GameFile>>(readOrder, newFiles));
+            _indicesBag.Add(new FileIndex(readOrder, source, newFiles));
             Interlocked.Add(ref _count, CountVisible(newFiles));
             InvalidateSortCache();
 
@@ -216,9 +230,9 @@ namespace CUE4Parse.FileProvider.Vfs
         public bool ContainsKey(string key)
         {
             var sortedIndices = GetSortedIndices();
-            foreach (var files in sortedIndices)
+            foreach (var index in sortedIndices)
             {
-                if (files.Value.ContainsKey(key))
+                if (index.Files.ContainsKey(key))
                     return true;
             }
 
@@ -229,9 +243,9 @@ namespace CUE4Parse.FileProvider.Vfs
         public bool TryGetValue(string key, [MaybeNullWhen(false)] out GameFile value)
         {
             var sortedIndices = GetSortedIndices();
-            foreach (var files in sortedIndices)
+            foreach (var index in sortedIndices)
             {
-                if (files.Value.TryGetValue(key, out value))
+                if (index.Files.TryGetValue(key, out value))
                     return true;
             }
 
@@ -244,9 +258,9 @@ namespace CUE4Parse.FileProvider.Vfs
         {
             values = [];
             var sortedIndices = GetSortedIndices();
-            foreach (var files in sortedIndices)
+            foreach (var index in sortedIndices)
             {
-                if (files.Value.TryGetValue(key, out var value))
+                if (index.Files.TryGetValue(key, out var value))
                 {
                     values.Add(value);
                 }
@@ -262,7 +276,7 @@ namespace CUE4Parse.FileProvider.Vfs
             var sortedIndices = GetSortedIndices();
             foreach (var index in sortedIndices)
             {
-                foreach (var entry in index.Value)
+                foreach (var entry in index.Files)
                 {
                     if (entry.Value.IsHidden) continue;
                     yield return entry;
@@ -289,7 +303,7 @@ namespace CUE4Parse.FileProvider.Vfs
                 var sortedIndices = _orig.GetSortedIndices();
                 foreach (var index in sortedIndices)
                 {
-                    foreach (var (key, value) in index.Value)
+                    foreach (var (key, value) in index.Files)
                     {
                         if (value.IsHidden) continue;
                         yield return key;
@@ -314,7 +328,7 @@ namespace CUE4Parse.FileProvider.Vfs
                 var sortedIndices = _orig.GetSortedIndices();
                 foreach (var index in sortedIndices)
                 {
-                    foreach (var value in index.Value.Values)
+                    foreach (var value in index.Files.Values)
                     {
                         if (value.IsHidden) continue;
                         yield return value;

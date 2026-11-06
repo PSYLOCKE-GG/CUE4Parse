@@ -11,7 +11,7 @@ namespace CUE4Parse.UE4.VirtualFileSystem
             Mount(pathComparer);
 
             var ioStoreReader = this as IoStoreReader;
-            files.AddFiles(Files, ReadOrder, ioStoreReader?.PackageIdIndex, ioStoreReader?.OptionalSegmentPackageIdIndex);
+            files.AddFiles(Files, ReadOrder, ioStoreReader?.PackageIdIndex, ioStoreReader?.OptionalSegmentPackageIdIndex, Name);
             vfsMounted?.Invoke(this, files.Count);
         }
     }

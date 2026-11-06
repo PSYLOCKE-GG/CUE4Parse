@@ -90,6 +90,10 @@ namespace CUE4Parse.FileProvider
             // In .uproject mode, we must recursively look for files
             option = uproject != null ? SearchOption.AllDirectories : option;
 
+            // UE mounts the pak files it finds in descending path order (FoundPakFiles.Sort(TGreater<FString>()),
+            // FPakPlatformFile::MountAllPakFiles, IPlatformFilePak.cpp:8129) and keeps them in mount order
+            // where two share a read order (PakFiles.StableSort(), :7853), so the later-named patch wins a tie.
+            var containers = new List<FileInfo>();
             foreach (var file in directory.EnumerateFiles("*.*", option))
             {
                 var upperExt = file.Extension.SubstringAfter('.').ToUpper();
@@ -104,7 +108,7 @@ namespace CUE4Parse.FileProvider
                 if (uproject is null && (upperExt is "PAK" or "UTOC" || (upperExt == "UPAK" && Versions.Game is GAME_LordOfMysteries)))
                 {
                     if (file.FullName.Contains(@"Binaries\ThirdParty\CEF", StringComparison.OrdinalIgnoreCase) || file.FullName.Contains(@"Binaries\Win32\host") || file.FullName.Contains(@"Binaries\Win64\host") || file.FullName.Contains(@"\qtwebengine_") || file.FullName.Contains(@"NexonPlatformWebView\ThirdParty") || file.FullName.Contains("SnapversePCGameSDK")) continue;
-                    RegisterVfs(file);
+                    containers.Add(file);
                     continue;
                 }
 
@@ -130,6 +134,9 @@ namespace CUE4Parse.FileProvider
                 var osFile = new OsGameFile(_workingDirectory, file, mountPoint, Versions);
                 osFiles[osFile.Path] = osFile;
             }
+
+            foreach (var file in containers.OrderByDescending(file => file.FullName, StringComparer.Ordinal))
+                RegisterVfs(file);
 
             return new LooseFileDiscovery(osFiles, packageCount);
         }
