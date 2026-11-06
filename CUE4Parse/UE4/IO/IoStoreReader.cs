@@ -1012,6 +1012,12 @@ public partial class IoStoreReader : AbstractAesVfsReader
 
     protected override byte[] DecryptBytes(byte[] bytes, int beginOffset, int count, FAesKey key, bool isIndex)
     {
+        // Some third-party IoStore writers encrypt the payload blocks and set the Encrypted flag,
+        // but leave the directory index plaintext. Accept that mixed representation without
+        // weakening payload decryption; this mirrors Unreal mod tooling's read fallback.
+        if (isIndex && beginOffset == 0 && count == bytes.Length && IsValidIndex(bytes))
+            return bytes;
+
         if (TocResource.EncryptionMethod != EIoEncryptionMethod.AES_CTR)
             return base.DecryptBytes(bytes, beginOffset, count, key, isIndex);
         if (!isIndex)
