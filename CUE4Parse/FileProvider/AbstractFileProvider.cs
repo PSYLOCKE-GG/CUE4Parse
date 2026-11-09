@@ -270,13 +270,25 @@ namespace CUE4Parse.FileProvider
         }
 
         public GameFile this[string path]
-            => TryGetGameFile(path, Files, out var file)
+            => TryGetGameFile(path, out var file)
                 ? file
                 : throw new KeyNotFoundException($"There is no game file with the path \"{path}\"");
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryGetGameFile(string path, [MaybeNullWhen(false)] out GameFile file) =>
-            TryGetGameFile(path, Files, out file);
+            TryGetGameFile(path, Files, out file) || TryGetPackageById(path, out file);
+
+        // IoStore finds a package by the hash of its long package name (FPackageId::FromName), whatever its mount. So a
+        // package under a root that no plugin descriptor mounts, such as a plugin cooked only by reference, loads by name.
+        private bool TryGetPackageById(string path, [MaybeNullWhen(false)] out GameFile file)
+        {
+            file = null;
+            if (this is not IVfsFileProvider vfs || !path.StartsWith('/')) return false;
+            var leaf = path.LastIndexOf('/');
+            var dot = path.IndexOf('.', leaf + 1);
+            var packageName = dot < 0 ? path : path[..dot];
+            return vfs.FilesById.TryGetValue(FPackageId.FromName(packageName), out file);
+        }
 
         public int LoadLocalization(ELanguage language = ELanguage.English, CancellationToken cancellationToken = default)
             => LoadLocalization(GetLanguageCode(language), cancellationToken);
