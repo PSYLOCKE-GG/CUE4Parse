@@ -18,6 +18,8 @@ public class FStaticMeshLODResources
     public FStaticMeshSection[] Sections { get; protected set; } = [];
     public FBoxSphereBounds? SourceMeshBounds;
     public FCardRepresentationData? CardRepresentationData { get; set; }
+    /// <summary>True when the cooked render data holds a distance field for this LOD.</summary>
+    public bool HasDistanceFieldData { get; set; }
     public float MaxDeviation { get; protected set; }
     public int NumVertices { get; set; }
     // The render buffers below come from SerializeBuffers. A cooked LOD whose buffers sit in a
