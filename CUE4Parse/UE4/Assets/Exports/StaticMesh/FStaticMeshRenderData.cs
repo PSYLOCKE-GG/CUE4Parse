@@ -112,6 +112,7 @@ public class FStaticMeshRenderData
                 for (var i = 0; i < LODs.Length; i++)
                 {
                     var bValid = Ar.ReadBoolean();
+                    LODs[i].HasDistanceFieldData = bValid;
                     if (bValid)
                     {
                         if (Ar.Game is >= GAME_UE5_0 or GAME_TerminullBrigade or GAME_WutheringWaves)
