@@ -316,6 +316,7 @@ namespace CUE4Parse.FileProvider.Vfs
                 TryMountReader(reader, ref countNewMounts);
             }
 
+            ResolvePathHashOnlyEntries();
             return countNewMounts;
         }
 
@@ -334,6 +335,7 @@ namespace CUE4Parse.FileProvider.Vfs
             }
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
+            ResolvePathHashOnlyEntries();
             return countNewMounts;
         }
 
@@ -395,7 +397,44 @@ namespace CUE4Parse.FileProvider.Vfs
                 _keys.TryAdd(it.EncryptionKeyGuid, key);
             }
 
+            ResolvePathHashOnlyEntries();
             return countNewMounts;
+        }
+
+        /// <summary>
+        /// Recovers names for files of paks mounted without a full directory index by hashing every path
+        /// the provider knows (FPakFile::HashPath with each pak's seed). Mod paks override existing game
+        /// paths, so their files reappear at the path the game loads them from. Returns the number named.
+        /// </summary>
+        public int ResolvePathHashOnlyEntries()
+        {
+            var pending = _mountedVfs.Keys.OfType<PakFileReader>()
+                .Where(reader => reader.PathHashOnlyEntries is { Count: > 0 })
+                .ToArray();
+            if (pending.Length == 0)
+                return 0;
+
+            // Mod-only files have no game path to match; add names mod tools are known to write.
+            var candidates = Files.Keys // snapshot: resolving renames entries in the readers' dictionaries
+                .Concat(pending.Select(reader => reader.MountPoint + "chunknames")) // Repak-X / UAssetTool IoStore companion pak manifest
+                .ToArray();
+
+            var named = new int[pending.Length];
+            foreach (var path in candidates)
+            {
+                for (var i = 0; i < pending.Length; i++)
+                {
+                    if (pending[i].TryResolvePathHash(path))
+                        named[i]++;
+                }
+            }
+
+            for (var i = 0; i < pending.Length; i++)
+            {
+                Log.Information("Pak \"{Name}\": named {Named} path-hash-only files, {Remaining} remain under {Folder}",
+                    pending[i].Name, named[i], pending[i].PathHashOnlyEntries!.Count, PakFileReader.PathHashOnlyFolder);
+            }
+            return named.Sum();
         }
 
         private static int EstimatePackageIndexCapacity(IEnumerable<IAesVfsReader> readers)

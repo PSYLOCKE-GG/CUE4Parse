@@ -54,6 +54,21 @@ public partial class PakFileReader : AbstractAesVfsReader
     public override FGuid EncryptionKeyGuid => Info.EncryptionKeyGuid;
     public override bool IsEncrypted => Info.EncryptedIndex;
 
+    public ulong PathHashSeed { get; private set; }
+
+    /// <summary>
+    /// Folder (under the mount point) for entries of a pak without a full directory index whose name
+    /// could not be recovered. Each file is named after its path hash.
+    /// </summary>
+    public const string PathHashOnlyFolder = "__PathHashOnly__/";
+
+    /// <summary>
+    /// Entries known only by path hash (no full directory index and no pruned name), keyed by
+    /// FPakFile::HashPath. Null when the pak has a full directory index.
+    /// </summary>
+    public IReadOnlyDictionary<ulong, FPakEntry>? PathHashOnlyEntries => _pathHashOnlyEntries;
+    private Dictionary<ulong, FPakEntry>? _pathHashOnlyEntries;
+
     public PakFileReader(FArchive Ar) : base(Ar.Name, Ar.Versions)
     {
         this.Ar = Ar;
@@ -612,7 +627,7 @@ public partial class PakFileReader : AbstractAesVfsReader
 
         if (Ar.Game is GAME_DreamStar or GAME_DeltaForce)
         {
-            primaryIndex.Position += 8; // PathHashSeed
+            PathHashSeed = primaryIndex.Read<ulong>();
             fileCount = primaryIndex.Read<int>();
         }
 
@@ -632,27 +647,33 @@ public partial class PakFileReader : AbstractAesVfsReader
         if (Ar.Game is not (GAME_DreamStar or GAME_DeltaForce))
         {
             fileCount = primaryIndex.Read<int>();
-            primaryIndex.Position += 8; // PathHashSeed
+            PathHashSeed = primaryIndex.Read<ulong>();
         }
 
         if (!primaryIndex.ReadBoolean())
             throw new ParserException(primaryIndex, "No path hash index");
 
-        primaryIndex.Position += 36; // PathHashIndexOffset (long) + PathHashIndexSize (long) + PathHashIndexHash (20 bytes)
-        if (Ar.Game == GAME_Rennsport)
-            primaryIndex.Position += 16;
+        var pathHashIndexOffset = primaryIndex.Read<long>();
+        var pathHashIndexSize = primaryIndex.Read<long>();
+        primaryIndex.Position += 20; // PathHashIndexHash
+        if (Ar.Game == GAME_Rennsport) primaryIndex.Position += 16;
 
-        if (!primaryIndex.ReadBoolean())
+        // A pruned pak (the game strips it, or a mod omits it to hide from tools) has no full directory
+        // index; the engine resolves files through the path hash index instead (FPakFile::Find).
+        var hasFullDirectoryIndex = primaryIndex.ReadBoolean();
+        if (!hasFullDirectoryIndex && Ar.Game is GAME_Rennsport or GAME_TheDivisionResurgence)
             throw new ParserException(primaryIndex, "No directory index");
 
-        if (Ar.Game == GAME_TheDivisionResurgence)
-            primaryIndex.Position += 40; // duplicate entry
+        long directoryIndexOffset = 0, directoryIndexSize = 0;
+        if (hasFullDirectoryIndex)
+        {
+            if (Ar.Game == GAME_TheDivisionResurgence) primaryIndex.Position += 40; // duplicate entry
 
-        var directoryIndexOffset = primaryIndex.Read<long>();
-        var directoryIndexSize = primaryIndex.Read<long>();
-        primaryIndex.Position += 20; // Directory Index hash
-        if (Ar.Game == GAME_Rennsport)
-            primaryIndex.Position += 20;
+            directoryIndexOffset = primaryIndex.Read<long>();
+            directoryIndexSize = primaryIndex.Read<long>();
+            primaryIndex.Position += 20; // Directory Index hash
+            if (Ar.Game == GAME_Rennsport) primaryIndex.Position += 20;
+        }
         var encodedPakEntriesSize = primaryIndex.Read<int>();
         if (Ar.Game == GAME_Rennsport)
         {
@@ -672,6 +693,14 @@ public partial class PakFileReader : AbstractAesVfsReader
         {
             foreach (var entry in NonEncodedEntries)
                 entry.EncryptionIV = new FIoStoreEncryptionIV(primaryIndex);
+        }
+
+        if (!hasFullDirectoryIndex)
+        {
+            var hashOnlyFiles = new Dictionary<string, GameFile>(fileCount, pathComparer);
+            ReadPathHashIndex(pathHashIndexOffset, pathHashIndexSize, hashOnlyFiles, encodedPakEntries, NonEncodedEntries);
+            Files = hashOnlyFiles;
+            return;
         }
 
         // Read FDirectoryIndex
@@ -834,6 +863,123 @@ public partial class PakFileReader : AbstractAesVfsReader
                 files[path] = entry;
             }
         }
+    }
+
+    /// <summary>
+    /// Mounts a pak that has no full directory index from its path hash index, the way the engine
+    /// resolves files. Names come from the pruned directory index stored after the hash table; the
+    /// rest are listed under <see cref="PathHashOnlyFolder"/> until <see cref="TryResolvePathHash"/>
+    /// matches them against known paths.
+    /// </summary>
+    private void ReadPathHashIndex(
+        long pathHashIndexOffset, long pathHashIndexSize, Dictionary<string, GameFile> files,
+        GenericBufferReader encodedPakEntries, FPakEntry[] nonEncodedEntries
+    )
+    {
+        Ar.Position = pathHashIndexOffset;
+        using var pathHashIndex = new GenericBufferReader(ReadAndDecryptIndex((int) pathHashIndexSize));
+
+        var hashCount = pathHashIndex.Read<int>();
+        if (hashCount < 0)
+            throw new ParserException("Corrupt pak PathHashIndex detected");
+
+        var locations = new KeyValuePair<ulong, int>[hashCount];
+        for (var i = 0; i < hashCount; i++)
+        {
+            var hash = pathHashIndex.Read<ulong>();
+            locations[i] = new KeyValuePair<ulong, int>(hash, pathHashIndex.Read<int>());
+        }
+
+        // Pruned directory index: TMap<FString, TMap<FString, int32>> with the files the cooker kept named.
+        var prunedNames = new Dictionary<int, string>();
+        if (pathHashIndex.Position + sizeof(int) <= pathHashIndex.Length)
+        {
+            var trimMountSep = MountPoint.Length > 0 && MountPoint[^1] == '/';
+            var dirCount = pathHashIndex.Read<int>();
+            for (var dirIndex = 0; dirIndex < dirCount; dirIndex++)
+            {
+                var dirMemory = pathHashIndex.ReadFStringMemory();
+                var dir = dirMemory.GetEncoding().GetString(dirMemory.GetSpan());
+                if (trimMountSep && dir.StartsWith('/')) dir = dir[1..];
+
+                var fileEntries = pathHashIndex.Read<int>();
+                for (var fileIndex = 0; fileIndex < fileEntries; fileIndex++)
+                {
+                    var nameMemory = pathHashIndex.ReadFStringMemory();
+                    var location = pathHashIndex.Read<int>();
+                    prunedNames[location] = string.Concat(MountPoint, dir, nameMemory.GetEncoding().GetString(nameMemory.GetSpan()));
+                }
+            }
+        }
+
+        _pathHashOnlyEntries = new Dictionary<ulong, FPakEntry>();
+        foreach (var (hash, location) in locations)
+        {
+            if (location == int.MinValue) continue;
+
+            var named = prunedNames.TryGetValue(location, out var path);
+            path ??= string.Concat(MountPoint, PathHashOnlyFolder, hash.ToString("X16"));
+
+            FPakEntry entry;
+            if (location >= 0)
+            {
+                entry = new FPakEntry(this, path, encodedPakEntries, location);
+            }
+            else
+            {
+                var entryIndex = -location - 1;
+                if (entryIndex >= nonEncodedEntries.Length)
+                {
+                    Log.Warning("Invalid nonencoded pak entry with index {Index}, path hash {Hash:X16}", entryIndex, hash);
+                    continue;
+                }
+
+                entry = nonEncodedEntries[entryIndex];
+                entry.Path = path;
+            }
+
+            if (entry.IsEncrypted) EncryptedFileCount++;
+            if (!named) _pathHashOnlyEntries[hash] = entry;
+            files[path] = entry;
+        }
+
+        Log.Information("Pak \"{Name}\" has no full directory index: {Count} files from its path hash index ({Unnamed} unnamed)",
+            Name, files.Count, _pathHashOnlyEntries.Count);
+    }
+
+    /// <summary>
+    /// FPakFile::HashPath: FNV-64 of the lowercased UTF-16 path relative to the mount point, offset by the seed.
+    /// </summary>
+    public static ulong HashPath(ReadOnlySpan<char> relativePath, ulong seed)
+    {
+        var hash = 0xCBF29CE484222325UL + seed;
+        foreach (var c in relativePath)
+        {
+            var lower = char.ToLowerInvariant(c);
+            hash = (hash ^ (byte) lower) * 0x100000001B3UL;
+            hash = (hash ^ (byte) (lower >> 8)) * 0x100000001B3UL;
+        }
+        return hash;
+    }
+
+    /// <summary>
+    /// Gives an unnamed path-hash-only entry its real name if <paramref name="path"/> hashes to it.
+    /// Renames the entry in <see cref="AbstractVfsReader.Files"/> in place.
+    /// </summary>
+    public bool TryResolvePathHash(string path)
+    {
+        if (_pathHashOnlyEntries is not { Count: > 0 } || Files is not Dictionary<string, GameFile> files ||
+            !path.StartsWith(MountPoint, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var hash = HashPath(path.AsSpan(MountPoint.Length), PathHashSeed);
+        if (!_pathHashOnlyEntries.Remove(hash, out var entry))
+            return false;
+
+        files.Remove(entry.Path);
+        entry.Path = path;
+        files[path] = entry;
+        return true;
     }
 
     private void ReadFrozenIndex(StringComparer pathComparer)
